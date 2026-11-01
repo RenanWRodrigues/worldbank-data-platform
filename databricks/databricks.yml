@@ -1,0 +1,74 @@
+# Asset Bundle do lakehouse (2 jobs serverless). Host e credencial vêm do Databricks CLI
+# (`databricks configure`) ou de DATABRICKS_HOST/DATABRICKS_TOKEN no ambiente — nada versionado aqui.
+bundle:
+  name: worldbank_platform
+
+variables:
+  catalog:
+    description: Catálogo do Unity Catalog (DATABRICKS_CATALOG)
+    default: worldbank
+  schema:
+    description: Schema do lakehouse (DATABRICKS_SCHEMA)
+    default: lakehouse
+  volume:
+    description: Volume da landing (DATABRICKS_VOLUME)
+    default: landing
+
+sync:
+  # Só notebooks e src/ vão para o workspace (os testes rodam localmente)
+  exclude:
+    - tests/**
+    - "**/__pycache__/**"
+
+# Serverless: sem cluster declarado. Dependências (pycountry) vão no `%pip install` de cada notebook —
+# `environments`/`environment_key` só valem para tarefas Python script/wheel/dbt, não para notebooks.
+resources:
+  jobs:
+    worldbank_indicators:
+      name: worldbank_indicators
+      description: Indicadores e países — landing → bronze → silver → gold → dim_year/agg + check_quality
+      max_concurrent_runs: 1
+      queue:
+        enabled: true
+      parameters:
+        - {name: catalog, default: "${var.catalog}"}
+        - {name: schema, default: "${var.schema}"}
+        - {name: volume, default: "${var.volume}"}
+        - {name: run_id, default: manual}
+        - {name: job, default: worldbank_indicators}
+      tasks:
+        - task_key: setup
+          notebook_task: {notebook_path: ./notebooks/00_setup.py}
+        - task_key: indicators
+          depends_on: [{task_key: setup}]
+          notebook_task: {notebook_path: ./notebooks/10_indicators.py}
+        - task_key: serving
+          depends_on: [{task_key: indicators}]
+          notebook_task: {notebook_path: ./notebooks/30_serving.py}
+
+    worldbank_projects:
+      name: worldbank_projects
+      description: Micro-lotes de eventos de projetos — landing → bronze → silver → gold_fact_project → serving
+      max_concurrent_runs: 1
+      queue:
+        enabled: true
+      parameters:
+        - {name: catalog, default: "${var.catalog}"}
+        - {name: schema, default: "${var.schema}"}
+        - {name: volume, default: "${var.volume}"}
+        - {name: run_id, default: manual}
+        - {name: job, default: worldbank_projects}
+      tasks:
+        - task_key: setup
+          notebook_task: {notebook_path: ./notebooks/00_setup.py}
+        - task_key: projects
+          depends_on: [{task_key: setup}]
+          notebook_task: {notebook_path: ./notebooks/20_projects.py}
+        - task_key: serving
+          depends_on: [{task_key: projects}]
+          notebook_task: {notebook_path: ./notebooks/30_serving.py}
+
+targets:
+  dev:
+    mode: development  # prefixa os nomes com [dev <usuário>] e pausa agendas
+    default: true

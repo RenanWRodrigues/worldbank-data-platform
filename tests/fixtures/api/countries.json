@@ -1,0 +1,60 @@
+[
+ {
+  "page": 1,
+  "pages": 1,
+  "per_page": "400",
+  "total": 2
+ },
+ [
+  {
+   "id": "BRA",
+   "iso2Code": "BR",
+   "name": "Brazil",
+   "region": {
+    "id": "LCN",
+    "iso2code": "ZJ",
+    "value": "Latin America & Caribbean "
+   },
+   "adminregion": {
+    "id": "LAC",
+    "value": "Latin America & Caribbean (excluding high income)"
+   },
+   "incomeLevel": {
+    "id": "UMC",
+    "value": "Upper middle income"
+   },
+   "lendingType": {
+    "id": "IBD",
+    "value": "IBRD"
+   },
+   "capitalCity": "Brasilia",
+   "longitude": "-47.9292",
+   "latitude": "-15.7801"
+  },
+  {
+   "id": "WLD",
+   "iso2Code": "1W",
+   "name": "World",
+   "region": {
+    "id": "NA",
+    "iso2code": "NA",
+    "value": "Aggregates"
+   },
+   "adminregion": {
+    "id": "",
+    "value": ""
+   },
+   "incomeLevel": {
+    "id": "NA",
+    "value": "Aggregates"
+   },
+   "lendingType": {
+    "id": "",
+    "value": "Aggregates"
+   },
+   "capitalCity": "",
+   "longitude": "",
+   "latitude": ""
+  }
+ ]
+]

@@ -1,0 +1,40 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/page/2.1.0/schema.json",
+  "name": "visao_global",
+  "displayName": "Visão Global",
+  "displayOption": "FitToPage",
+  "height": 720,
+  "width": 1280,
+  "visualInteractions": [
+    {
+      "source": "31cf80f58cac58248047",
+      "target": "fc49480555825aca81ad",
+      "type": "NoFilter"
+    },
+    {
+      "source": "31cf80f58cac58248047",
+      "target": "d11598971d525d798a3c",
+      "type": "NoFilter"
+    },
+    {
+      "source": "31cf80f58cac58248047",
+      "target": "96963226276f54c2a816",
+      "type": "NoFilter"
+    },
+    {
+      "source": "31cf80f58cac58248047",
+      "target": "2a4b552f3ba55722a243",
+      "type": "NoFilter"
+    },
+    {
+      "source": "31cf80f58cac58248047",
+      "target": "3625e5d3f32252e29844",
+      "type": "NoFilter"
+    },
+    {
+      "source": "31cf80f58cac58248047",
+      "target": "104074eee9595877a437",
+      "type": "NoFilter"
+    }
+  ]
+}

@@ -1,0 +1,42 @@
+relationship agg_country_year_country_code_dim_country_country_code
+	fromColumn: agg_country_year.country_code
+	toColumn: dim_country.country_code
+
+relationship fact_indicator_country_code_dim_country_country_code
+	fromColumn: fact_indicator.country_code
+	toColumn: dim_country.country_code
+
+relationship fact_project_country_code_dim_country_country_code
+	fromColumn: fact_project.country_code
+	toColumn: dim_country.country_code
+
+relationship agg_country_year_year_dim_year_year
+	fromColumn: agg_country_year.year
+	toColumn: dim_year.year
+
+relationship fact_indicator_year_dim_year_year
+	fromColumn: fact_indicator.year
+	toColumn: dim_year.year
+
+relationship fact_project_approval_year_dim_year_year
+	fromColumn: fact_project.approval_year
+	toColumn: dim_year.year
+
+relationship fact_indicator_indicator_code_dim_indicator_indicator_code
+	fromColumn: fact_indicator.indicator_code
+	toColumn: dim_indicator.indicator_code
+
+relationship 48ab79f4-ce06-44e1-a908-ce7dcea09725
+	joinOnDateBehavior: datePartOnly
+	fromColumn: dim_year.year_date
+	toColumn: LocalDateTable_ea1ffc79-1360-4fe9-a4c0-c00ccfac140a.Date
+
+relationship 71747a48-4fdf-46e9-9567-206dbded5167
+	joinOnDateBehavior: datePartOnly
+	fromColumn: fact_project.board_approval_date
+	toColumn: LocalDateTable_fbf04154-9e69-4dd0-a6d7-c73f3a0059e5.Date
+
+relationship 7fb96657-df4c-48c5-8bf6-5472746c8d4e
+	joinOnDateBehavior: datePartOnly
+	fromColumn: fact_project.closing_date
+	toColumn: LocalDateTable_784b871d-ae4d-4f0d-8d49-cb3a3378b62f.Date

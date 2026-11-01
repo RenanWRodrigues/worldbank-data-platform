@@ -1,0 +1,42 @@
+[project]
+name = "worldbank-data-platform"
+version = "1.1.1"
+description = "Pipeline de dados World Bank: FastAPI, Kafka, Databricks, Airflow, PostgreSQL e Power BI"
+requires-python = ">=3.12"
+
+[tool.ruff]
+line-length = 110
+target-version = "py312"
+extend-exclude = ["data"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "S", "PTH", "RUF"]
+ignore = [
+  "S101",   # assert é ok em testes
+  "S608",   # SQL montado a partir de nomes de tabela internos
+  "RUF001", "RUF002", "RUF003",  # acentos em strings/comentários em português
+]
+
+[tool.ruff.lint.per-file-ignores]
+"databricks/notebooks/*" = ["F821", "E402", "I001"]   # spark, dbutils, display são globais no Databricks
+"**/tests/**" = ["S", "PTH"]
+"tests/**" = ["S", "PTH"]
+"tests/fixtures/*" = ["E501"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests", "api/tests", "ingestion/tests", "databricks/tests", "airflow/tests"]
+pythonpath = ["api", "ingestion", "databricks/src", "airflow/include", "tests/fixtures"]
+addopts = "-ra --strict-markers"
+markers = [
+  "spark: precisa de pyspark + Java (make test-spark)",
+  "integration: precisa da stack Docker de pé (make test-integration)",
+  "airflow: precisa do Airflow instalado (roda dentro do container)",
+]
+filterwarnings = ["ignore::DeprecationWarning"]
+
+[tool.coverage.run]
+source = ["api/app", "ingestion", "databricks/src", "airflow/include"]
+omit = ["**/tests/**"]
+
+[tool.coverage.report]
+fail_under = 80  # meta de cobertura (unitários + Spark: `make coverage` e o CI)

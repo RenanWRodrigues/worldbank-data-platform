@@ -1,0 +1,55 @@
+table rt_alerts
+	lineageTag: eae58181-c143-46fd-9294-54ae5a1ca421
+
+	column alert_id
+		dataType: int64
+		lineageTag: c8241b44-44ac-46f6-8002-55e5662a5bec
+		summarizeBy: none
+		sourceColumn: alert_id
+
+	column event_id
+		dataType: string
+		lineageTag: 9d1fb417-042c-4940-a80c-b9f264ce8f05
+		sourceColumn: event_id
+
+	column project_id
+		dataType: string
+		lineageTag: 83312d33-fb18-42f9-8390-3b61e005dba9
+		sourceColumn: project_id
+
+	column kind
+		dataType: string
+		lineageTag: 5f47035d-b78e-4852-8a2a-18e62d1d185a
+		sourceColumn: kind
+
+	column message
+		dataType: string
+		lineageTag: 60e07dc8-8db8-4b6d-8c58-7db0f62bd1d6
+		sourceColumn: message
+
+	column amount_usd
+		dataType: double
+		formatString: #,0
+		lineageTag: 2f5d83bb-9e53-4cfc-8d31-ae1695a079dc
+		sourceColumn: amount_usd
+
+	column event_time
+		dataType: dateTime
+		formatString: dd/mm/yyyy hh:nn:ss
+		lineageTag: 09ac247f-bf4e-4f7a-aae3-68af1a14b13d
+		sourceColumn: event_time
+
+	column created_at
+		dataType: dateTime
+		formatString: dd/mm/yyyy hh:nn:ss
+		lineageTag: c405bbd9-7e59-4a83-9efb-d3d1d6cefc27
+		sourceColumn: created_at
+
+	partition rt_alerts = m
+		mode: directQuery
+		source =
+				let
+				    Fonte = PostgreSQL.Database("127.0.0.1:5433", "worldbank"),
+				    Tabela = Fonte{[Schema = "rt", Item = "alerts"]}[Data]
+				in
+				    Tabela

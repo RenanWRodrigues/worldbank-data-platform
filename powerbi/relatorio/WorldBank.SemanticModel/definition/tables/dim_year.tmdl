@@ -1,0 +1,45 @@
+table dim_year
+	lineageTag: 9458b30d-b4e3-417b-90a2-7db741daa00e
+
+	column year
+		dataType: int64
+		isKey
+		formatString: 0
+		lineageTag: 4e01e5f2-2609-4c52-97a4-5c156943fdba
+		summarizeBy: none
+		sourceColumn: year
+
+	column decade
+		dataType: string
+		lineageTag: 6810107b-71fc-4f9f-b711-9b972e952fca
+		summarizeBy: none
+		sourceColumn: decade
+
+		annotation SummarizationSetBy = Automatic
+
+	column year_date
+		dataType: dateTime
+		formatString: dd/mm/yyyy
+		lineageTag: f4338141-8b63-415c-9bac-f21a05df8b16
+		summarizeBy: none
+		sourceColumn: year_date
+
+		variation Variação
+			isDefault
+			relationship: 48ab79f4-ce06-44e1-a908-ce7dcea09725
+			defaultHierarchy: LocalDateTable_ea1ffc79-1360-4fe9-a4c0-c00ccfac140a.'Hierarquia de datas'
+
+		annotation UnderlyingDateTimeDataType = Date
+
+		annotation SummarizationSetBy = Automatic
+
+	partition dim_year = m
+		mode: import
+		source =
+				let
+				    Fonte = PostgreSQL.Database("127.0.0.1:5433", "worldbank"),
+				    Tabela = Fonte{[Schema = "dw", Item = "dim_year"]}[Data]
+				in
+				    Tabela
+
+	annotation PBI_ResultType = Table

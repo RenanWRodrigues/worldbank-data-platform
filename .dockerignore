@@ -1,0 +1,5 @@
+# Contexto de build da raiz (imagem de ingestion/): só o necessário — nada de .env, dados ou .venv
+*
+!ingestion/*.py
+!ingestion/requirements.txt
+!docs/contratos/evento-kafka.schema.json

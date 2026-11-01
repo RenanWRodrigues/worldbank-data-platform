@@ -1,0 +1,44 @@
+[
+ {
+  "page": 1,
+  "pages": 2,
+  "per_page": 2,
+  "total": 3,
+  "sourceid": "2",
+  "lastupdated": "2026-07-01"
+ },
+ [
+  {
+   "indicator": {
+    "id": "SP.POP.TOTL",
+    "value": "Population, total"
+   },
+   "country": {
+    "id": "BR",
+    "value": "Brazil"
+   },
+   "countryiso3code": "BRA",
+   "date": "2023",
+   "value": 216422446,
+   "unit": "",
+   "obs_status": "",
+   "decimal": 0
+  },
+  {
+   "indicator": {
+    "id": "SP.POP.TOTL",
+    "value": "Population, total"
+   },
+   "country": {
+    "id": "1W",
+    "value": "World"
+   },
+   "countryiso3code": "WLD",
+   "date": "2023",
+   "value": 8061876001,
+   "unit": "",
+   "obs_status": "",
+   "decimal": 0
+  }
+ ]
+]

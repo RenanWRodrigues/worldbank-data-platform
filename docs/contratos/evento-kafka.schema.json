@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "worldbank/evento-kafka.schema.json",
+  "title": "Evento de projeto no tópico worldbank.projects.events",
+  "type": "object",
+  "required": ["event_id", "event_type", "event_time", "produced_at", "source", "project_id", "payload"],
+  "properties": {
+    "event_id": { "type": "string", "format": "uuid",
+                  "description": "uuid5 determinístico de project_id + event_type + hash do payload: reentregas e replays deduplicam" },
+    "event_type": { "enum": ["PROJECT_APPROVED", "PROJECT_UPDATED", "PROJECT_CLOSED"] },
+    "event_time": { "type": "string", "format": "date-time",
+                    "description": "quando o fato ocorreu: data de aprovação (APPROVED) ou de encerramento (CLOSED) à meia-noite UTC; hora da detecção (UPDATED). O CLOSED nunca fica antes do último evento do projeto" },
+    "produced_at": { "type": "string", "format": "date-time", "description": "quando foi publicado; desempata event_time igual" },
+    "source": { "enum": ["worldbank-projects-api", "kaggle-replay"] },
+    "project_id": { "type": "string", "pattern": "^P\\d{5,7}$" },
+    "payload": { "$ref": "#/$defs/project" }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "project": {
+      "type": "object",
+      "required": ["project_id"],
+      "properties": {
+        "project_id": { "type": "string" },
+        "project_name": { "type": ["string", "null"] },
+        "status": { "type": ["string", "null"] },
+        "country_name": { "type": ["string", "null"] },
+        "country_iso2": { "type": ["string", "null"], "maxLength": 2,
+                          "description": "como veio da fonte; pode ser código regional (ex.: 3A) — o silver só aceita se for país em dim_country" },
+        "region_name": { "type": ["string", "null"] },
+        "board_approval_date": { "type": ["string", "null"], "pattern": "^\\d{4}-\\d{2}-\\d{2}$" },
+        "closing_date": { "type": ["string", "null"], "pattern": "^\\d{4}-\\d{2}-\\d{2}$" },
+        "total_commitment_usd": { "type": ["number", "null"], "minimum": 0 },
+        "ibrd_commitment_usd": { "type": ["number", "null"], "minimum": 0 },
+        "ida_commitment_usd": { "type": ["number", "null"], "minimum": 0 },
+        "grant_amount_usd": { "type": ["number", "null"], "minimum": 0 },
+        "lending_instrument": { "type": ["string", "null"] },
+        "major_sector": { "type": ["string", "null"] },
+        "borrower": { "type": ["string", "null"] },
+        "source": { "type": "string" }
+      }
+    }
+  },
+  "x-kafka": {
+    "topic": "worldbank.projects.events",
+    "key": "project_id (ordem garantida por projeto)",
+    "partitions": 6,
+    "retention": "30 dias",
+    "consumer_groups": {
+      "lakehouse-sink": "micro-lotes NDJSON -> Volume do Databricks (ops.landing_files)",
+      "serving-realtime": "rt.project_events, rt.projects_latest, rt.alerts"
+    },
+    "delivery": "at-least-once; dedup a jusante por event_id"
+  }
+}

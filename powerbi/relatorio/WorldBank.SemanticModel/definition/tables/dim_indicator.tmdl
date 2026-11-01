@@ -1,0 +1,27 @@
+table dim_indicator
+	lineageTag: dca72223-4a6a-46fb-b238-5a9c4dac517f
+
+	column indicator_code
+		dataType: string
+		isKey
+		lineageTag: 87d95073-4605-40b8-8732-746b679540ec
+		sourceColumn: indicator_code
+
+	column indicator_name
+		dataType: string
+		lineageTag: 093cfc7d-007e-4768-8b57-72745e0670a1
+		sourceColumn: indicator_name
+
+	column unit
+		dataType: string
+		lineageTag: 4575bfc2-aca5-4ef8-abaf-3433b09a9c82
+		sourceColumn: unit
+
+	partition dim_indicator = m
+		mode: import
+		source =
+				let
+				    Fonte = PostgreSQL.Database("127.0.0.1:5433", "worldbank"),
+				    Tabela = Fonte{[Schema = "dw", Item = "dim_indicator"]}[Data]
+				in
+				    Tabela

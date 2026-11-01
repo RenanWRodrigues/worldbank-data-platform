@@ -1,0 +1,539 @@
+table _Medidas
+	lineageTag: 96951e21-2990-4caa-ba65-efc9a9f267cc
+
+	/// Menor nº de países (não agregados) com valor entre os 4 indicadores, no(s) ano(s) do contexto. Ignora filtros de país/região.
+	measure 'Cobertura mínima de países' =
+			VAR _pop =
+			    CALCULATE (
+			        COUNTROWS ( agg_country_year ),
+			        NOT ISBLANK ( agg_country_year[population] ),
+			        REMOVEFILTERS ( dim_country ),
+			        dim_country[is_aggregate] = FALSE ()
+			    )
+			VAR _pib =
+			    CALCULATE (
+			        COUNTROWS ( agg_country_year ),
+			        NOT ISBLANK ( agg_country_year[gdp_usd] ),
+			        REMOVEFILTERS ( dim_country ),
+			        dim_country[is_aggregate] = FALSE ()
+			    )
+			VAR _rural =
+			    CALCULATE (
+			        COUNTROWS ( agg_country_year ),
+			        NOT ISBLANK ( agg_country_year[rural_population_pct] ),
+			        REMOVEFILTERS ( dim_country ),
+			        dim_country[is_aggregate] = FALSE ()
+			    )
+			VAR _eletricidade =
+			    CALCULATE (
+			        COUNTROWS ( agg_country_year ),
+			        NOT ISBLANK ( agg_country_year[electricity_access_pct] ),
+			        REMOVEFILTERS ( dim_country ),
+			        dim_country[is_aggregate] = FALSE ()
+			    )
+			RETURN
+			    MIN ( MIN ( _pop, _pib ), MIN ( _rural, _eletricidade ) )
+		formatString: 0
+		displayFolder: 0. Ano de referência
+		lineageTag: 2c15e1c2-90b7-4425-930a-da045d169f49
+
+	/// K00 — Com um ano no contexto usa esse ano; senão, o último ano em que os 4 indicadores têm ≥ 180 países.
+	measure 'Ano de referência' =
+			VAR _anosCobertos =
+			    FILTER ( VALUES ( dim_year[year] ), [Cobertura mínima de países] >= 180 )
+			RETURN
+			    IF (
+			        HASONEVALUE ( dim_year[year] ),
+			        VALUES ( dim_year[year] ),
+			        MAXX ( _anosCobertos, dim_year[year] )
+			    )
+		formatString: 0
+		displayFolder: 0. Ano de referência
+		lineageTag: c4291126-6ef0-4391-8ed0-628fdee81ca5
+
+	/// Rótulo para títulos/subtítulos dinâmicos ("2024 · Todas as regiões").
+	measure 'Rótulo do contexto' =
+			VAR _regiao =
+			    IF ( ISFILTERED ( dim_country[region] ), SELECTEDVALUE ( dim_country[region], "Várias regiões" ), "Todas as regiões" )
+			RETURN
+			    [Ano de referência] & " · " & _regiao
+		displayFolder: 0. Ano de referência
+		lineageTag: debe2733-bc2d-4eb4-bca0-7c3b11330007
+
+	/// Cabeçalho "Atualizado em …": última carga do dw (dw.load_audit).
+	measure 'Última carga do DW' = MAX ( load_audit[loaded_at] )
+		formatString: dd/mm/yyyy hh:nn
+		displayFolder: 0. Ano de referência
+		lineageTag: b81909bd-39d9-4144-9643-68baae93d621
+
+	/// K01 — Soma da população dos países no ano de referência.
+	measure População =
+			VAR _ano = [Ano de referência]
+			RETURN
+			    CALCULATE (
+			        SUM ( agg_country_year[population] ),
+			        dim_year[year] = _ano,
+			        KEEPFILTERS ( dim_country[is_aggregate] = FALSE () )
+			    )
+		formatString: #,0
+		displayFolder: 1. Visão Global
+		lineageTag: 17516230-5749-4222-93b4-0b0795819c79
+
+	/// K02 — Crescimento anual composto da população em 10 anos.
+	measure 'População — cresc. a.a. em 10 anos' =
+			VAR _ano = [Ano de referência]
+			VAR _atual = [População]
+			VAR _base = CALCULATE ( [População], dim_year[year] = _ano - 10 )
+			RETURN
+			    IF ( _base > 0 && _atual > 0, POWER ( DIVIDE ( _atual, _base ), 0.1 ) - 1 )
+		formatString: +0.0% "a.a. em 10 anos";-0.0% "a.a. em 10 anos"
+		displayFolder: 1. Visão Global
+		lineageTag: 751c46d6-e130-435a-9e8e-b6f9bad6abda
+
+	/// K03 — PIB (US$ correntes) somado entre os países com valor no ano.
+	measure 'PIB (US$)' =
+			VAR _ano = [Ano de referência]
+			RETURN
+			    CALCULATE (
+			        SUM ( agg_country_year[gdp_usd] ),
+			        dim_year[year] = _ano,
+			        KEEPFILTERS ( dim_country[is_aggregate] = FALSE () )
+			    )
+		formatString: #,0
+		displayFolder: 1. Visão Global
+		lineageTag: 1dd24a20-ecc9-4f7e-a1c8-221aa91c14fb
+
+	/// K03 — Variação do PIB frente ao ano anterior.
+	measure 'PIB — var. % vs ano anterior' =
+			VAR _ano = [Ano de referência]
+			VAR _anterior = CALCULATE ( [PIB (US$)], dim_year[year] = _ano - 1 )
+			RETURN
+			    DIVIDE ( [PIB (US$)] - _anterior, _anterior )
+		formatString: +0.0% "vs ano anterior";-0.0% "vs ano anterior"
+		displayFolder: 1. Visão Global
+		lineageTag: 6188d30e-7666-4f5d-89b8-d624557f8c30
+
+	/// K04 — PIB per capita ponderado = Σ PIB / Σ população, só países com os dois valores no ano.
+	measure 'PIB per capita (US$)' =
+			VAR _ano = [Ano de referência]
+			VAR _pib =
+			    CALCULATE (
+			        SUM ( agg_country_year[gdp_usd] ),
+			        dim_year[year] = _ano,
+			        NOT ISBLANK ( agg_country_year[population] ),
+			        NOT ISBLANK ( agg_country_year[gdp_usd] ),
+			        KEEPFILTERS ( dim_country[is_aggregate] = FALSE () )
+			    )
+			VAR _pop =
+			    CALCULATE (
+			        SUM ( agg_country_year[population] ),
+			        dim_year[year] = _ano,
+			        NOT ISBLANK ( agg_country_year[population] ),
+			        NOT ISBLANK ( agg_country_year[gdp_usd] ),
+			        KEEPFILTERS ( dim_country[is_aggregate] = FALSE () )
+			    )
+			RETURN
+			    DIVIDE ( _pib, _pop )
+		formatString: #,0
+		displayFolder: 1. Visão Global
+		lineageTag: 7128cf2f-b299-4b95-b8b1-c1daa573df2d
+
+	/// K04 — Variação do PIB per capita frente ao ano anterior.
+	measure 'PIB per capita — var. % vs ano anterior' =
+			VAR _ano = [Ano de referência]
+			VAR _anterior = CALCULATE ( [PIB per capita (US$)], dim_year[year] = _ano - 1 )
+			RETURN
+			    DIVIDE ( [PIB per capita (US$)] - _anterior, _anterior )
+		formatString: +0.0% "vs ano anterior";-0.0% "vs ano anterior"
+		displayFolder: 1. Visão Global
+		lineageTag: 7081e9f5-4248-4271-99a0-4fcc7fb682f2
+
+	/// K09 — Posição do país no ranking de PIB do ano (1 = maior); em branco sem exatamente um país.
+	measure 'Posição no ranking de PIB' =
+			VAR _ano = [Ano de referência]
+			VAR _pib = [PIB (US$)]
+			VAR _todos =
+			    CALCULATETABLE (
+			        ADDCOLUMNS ( VALUES ( dim_country[country_code] ), "@pib", [PIB (US$)] ),
+			        REMOVEFILTERS ( dim_country ),
+			        dim_year[year] = _ano
+			    )
+			RETURN
+			    IF (
+			        HASONEVALUE ( dim_country[country_code] ) && NOT ISBLANK ( _pib ),
+			        COUNTROWS ( FILTER ( _todos, [@pib] > _pib ) ) + 1
+			    )
+		formatString: 0"º"
+		displayFolder: 1. Visão Global
+		lineageTag: 1c364c22-a591-4056-9b10-771ade57a765
+
+	/// K05 — Acesso à eletricidade (% da população, 0–100), média ponderada pela população.
+	measure 'Acesso à eletricidade (%)' =
+			VAR _ano = [Ano de referência]
+			VAR _ponderado =
+			    CALCULATE (
+			        SUMX ( agg_country_year, agg_country_year[population] * agg_country_year[electricity_access_pct] ),
+			        dim_year[year] = _ano,
+			        NOT ISBLANK ( agg_country_year[population] ),
+			        NOT ISBLANK ( agg_country_year[electricity_access_pct] ),
+			        KEEPFILTERS ( dim_country[is_aggregate] = FALSE () )
+			    )
+			VAR _pop =
+			    CALCULATE (
+			        SUM ( agg_country_year[population] ),
+			        dim_year[year] = _ano,
+			        NOT ISBLANK ( agg_country_year[population] ),
+			        NOT ISBLANK ( agg_country_year[electricity_access_pct] ),
+			        KEEPFILTERS ( dim_country[is_aggregate] = FALSE () )
+			    )
+			RETURN
+			    DIVIDE ( _ponderado, _pop )
+		formatString: 0.0
+		displayFolder: 2. Energia e Desenvolvimento
+		lineageTag: 661fcab9-de20-4e1c-8855-9419ac43d5ee
+
+	/// K05 — Diferença em pontos percentuais frente a 10 anos antes.
+	measure 'Acesso à eletricidade — var. p.p. em 10 anos' =
+			VAR _ano = [Ano de referência]
+			VAR _base = CALCULATE ( [Acesso à eletricidade (%)], dim_year[year] = _ano - 10 )
+			RETURN
+			    IF ( NOT ISBLANK ( _base ), [Acesso à eletricidade (%)] - _base )
+		formatString: +0.0" p.p. em 10 anos";-0.0" p.p. em 10 anos"
+		displayFolder: 2. Energia e Desenvolvimento
+		lineageTag: d78ce285-b60a-4ae6-bb76-7887679bf624
+
+	/// K05 — Variante para o gráfico de halteres por região (2000 → ano de referência).
+	measure 'Acesso à eletricidade em 2000 (%)' = CALCULATE ( [Acesso à eletricidade (%)], dim_year[year] = 2000 )
+		formatString: 0.0
+		displayFolder: 2. Energia e Desenvolvimento
+		lineageTag: 8d50b3e8-69e6-4ecc-b65b-f5377fcca7e7
+
+	/// K06 — Σ população × (100 − acesso) / 100.
+	measure 'Pessoas sem eletricidade' =
+			VAR _ano = [Ano de referência]
+			RETURN
+			    CALCULATE (
+			        SUMX (
+			            agg_country_year,
+			            agg_country_year[population] * ( 100 - agg_country_year[electricity_access_pct] ) / 100
+			        ),
+			        dim_year[year] = _ano,
+			        NOT ISBLANK ( agg_country_year[population] ),
+			        NOT ISBLANK ( agg_country_year[electricity_access_pct] ),
+			        KEEPFILTERS ( dim_country[is_aggregate] = FALSE () )
+			    )
+		formatString: #,0
+		displayFolder: 2. Energia e Desenvolvimento
+		lineageTag: 55d0ea15-0826-4ca7-b8f1-410da31bf393
+
+	/// K06 — Variação absoluta em 10 anos (negativo = menos gente sem luz).
+	measure 'Pessoas sem eletricidade — var. em 10 anos' =
+			VAR _ano = [Ano de referência]
+			VAR _base = CALCULATE ( [Pessoas sem eletricidade], dim_year[year] = _ano - 10 )
+			RETURN
+			    IF ( NOT ISBLANK ( _base ), [Pessoas sem eletricidade] - _base )
+		formatString: +#,0;-#,0
+		displayFolder: 2. Energia e Desenvolvimento
+		lineageTag: 9feceeca-e92d-4122-8826-2d308f3d8bef
+
+	/// K07 — População rural (% do total, 0–100), média ponderada pela população.
+	measure 'População rural (%)' =
+			VAR _ano = [Ano de referência]
+			VAR _ponderado =
+			    CALCULATE (
+			        SUMX ( agg_country_year, agg_country_year[population] * agg_country_year[rural_population_pct] ),
+			        dim_year[year] = _ano,
+			        NOT ISBLANK ( agg_country_year[population] ),
+			        NOT ISBLANK ( agg_country_year[rural_population_pct] ),
+			        KEEPFILTERS ( dim_country[is_aggregate] = FALSE () )
+			    )
+			VAR _pop =
+			    CALCULATE (
+			        SUM ( agg_country_year[population] ),
+			        dim_year[year] = _ano,
+			        NOT ISBLANK ( agg_country_year[population] ),
+			        NOT ISBLANK ( agg_country_year[rural_population_pct] ),
+			        KEEPFILTERS ( dim_country[is_aggregate] = FALSE () )
+			    )
+			RETURN
+			    DIVIDE ( _ponderado, _pop )
+		formatString: 0.0
+		displayFolder: 2. Energia e Desenvolvimento
+		lineageTag: 45f69914-881e-4ba0-9b68-dbbb06eed618
+
+	/// K07 — Diferença em pontos percentuais frente a 10 anos antes.
+	measure 'População rural — var. p.p. em 10 anos' =
+			VAR _ano = [Ano de referência]
+			VAR _base = CALCULATE ( [População rural (%)], dim_year[year] = _ano - 10 )
+			RETURN
+			    IF ( NOT ISBLANK ( _base ), [População rural (%)] - _base )
+		formatString: +0.0" p.p. em 10 anos";-0.0" p.p. em 10 anos"
+		displayFolder: 2. Energia e Desenvolvimento
+		lineageTag: c67122fc-8ca5-4dfd-913e-ce8a13da333c
+
+	/// K08 — Países com ≥ 99,5% da população com eletricidade no ano.
+	measure 'Países com acesso universal' =
+			VAR _ano = [Ano de referência]
+			RETURN
+			    CALCULATE (
+			        COUNTROWS ( agg_country_year ),
+			        dim_year[year] = _ano,
+			        agg_country_year[electricity_access_pct] >= 99.5,
+			        KEEPFILTERS ( dim_country[is_aggregate] = FALSE () )
+			    )
+		formatString: 0
+		displayFolder: 2. Energia e Desenvolvimento
+		lineageTag: 8b925758-e4c6-4369-a6b6-57aea77a4ab5
+
+	/// K13
+	measure 'Projetos aprovados' = COUNTROWS ( fact_project )
+		formatString: #,0
+		displayFolder: 3. Projetos
+		lineageTag: 827ad12c-19c4-4805-9dd3-af57079c8c24
+
+	/// K13 — Soma do compromisso (IBRD + IDA) dos projetos aprovados no período.
+	measure 'Valor comprometido (US$)' = SUM ( fact_project[total_amount_usd] )
+		formatString: #,0
+		displayFolder: 3. Projetos
+		lineageTag: 806a269f-d279-4409-8d6b-263adb50bad9
+
+	/// K13 — Doações (grant) dos projetos aprovados no período.
+	measure 'Doações (US$)' = SUM ( fact_project[grant_amount_usd] )
+		formatString: #,0
+		displayFolder: 3. Projetos
+		lineageTag: d7937615-56c2-4608-86f5-1b72ae081d2a
+
+	/// K13 — Valor médio por projeto com compromisso > 0.
+	measure 'Valor médio por projeto (US$)' =
+			DIVIDE (
+			    [Valor comprometido (US$)],
+			    CALCULATE ( COUNTROWS ( fact_project ), fact_project[total_amount_usd] > 0 )
+			)
+		formatString: #,0
+		displayFolder: 3. Projetos
+		lineageTag: b5f134b8-f933-4599-aae4-3ba4512b1d88
+
+	/// K13 — Status atual (último evento do stream).
+	measure 'Projetos ativos' = CALCULATE ( COUNTROWS ( fact_project ), fact_project[status] = "Active" )
+		formatString: #,0
+		displayFolder: 3. Projetos
+		lineageTag: b43183ca-a41a-4509-a5f3-4020b6f934c6
+
+	/// K13
+	measure 'Projetos ativos — % do total' = DIVIDE ( [Projetos ativos], [Projetos aprovados] )
+		formatString: 0.0% "do total"
+		displayFolder: 3. Projetos
+		lineageTag: f098860d-a076-4be3-8efb-061fe06c8caa
+
+	/// K13
+	measure 'Projetos encerrados' = CALCULATE ( COUNTROWS ( fact_project ), fact_project[status] = "Closed" )
+		formatString: #,0
+		displayFolder: 3. Projetos
+		lineageTag: 3694fc36-5876-48fa-938f-ceb59300620e
+
+	/// K13
+	measure 'Projetos encerrados — % do total' = DIVIDE ( [Projetos encerrados], [Projetos aprovados] )
+		formatString: 0.0%
+		displayFolder: 3. Projetos
+		lineageTag: 96876c9d-a6a2-465b-ad02-45ace9ee45c0
+
+	/// K15 — Participação no valor do que está selecionado (barras por região, setor).
+	measure '% do valor comprometido' = DIVIDE ( [Valor comprometido (US$)], CALCULATE ( [Valor comprometido (US$)], ALLSELECTED ( fact_project ) ) )
+		formatString: 0.0%
+		displayFolder: 3. Projetos
+		lineageTag: 9b45843e-d8df-4884-bc72-559066aad69a
+
+	/// K17 — Participação no nº de projetos (barras por instrumento).
+	measure '% dos projetos' = DIVIDE ( [Projetos aprovados], CALCULATE ( [Projetos aprovados], ALLSELECTED ( fact_project ) ) )
+		formatString: 0.0%
+		displayFolder: 3. Projetos
+		lineageTag: 0a4adef1-f8ff-426e-9b3f-355df541d411
+
+	/// K19 — Cartão "Valor comprometido BM": projetos aprovados no ano de referência.
+	measure 'Valor comprometido no ano de referência (US$)' =
+			VAR _ano = [Ano de referência]
+			RETURN
+			    CALCULATE ( [Valor comprometido (US$)], dim_year[year] = _ano )
+		formatString: #,0
+		displayFolder: 3. Projetos
+		lineageTag: 6fb6f9ae-1ffb-4c98-a54b-e78fa75e4434
+
+	/// K19
+	measure 'Projetos aprovados no ano de referência' =
+			VAR _ano = [Ano de referência]
+			RETURN
+			    CALCULATE ( [Projetos aprovados], dim_year[year] = _ano )
+		formatString: #,0 "projetos"
+		displayFolder: 3. Projetos
+		lineageTag: 8f447df0-6f10-45d9-8106-a49287b287e8
+
+	/// K22 — Eventos que chegaram ao rt na última hora.
+	measure 'Eventos (última hora)' =
+			VAR _desde = NOW () - 1 / 24
+			RETURN
+			    CALCULATE ( COUNTROWS ( rt_project_events ), rt_project_events[consumed_at] >= _desde ) + 0
+		formatString: #,0
+		displayFolder: 4. Ao vivo
+		lineageTag: c63cc476-5db8-49be-bdc0-20b95f881c94
+
+	/// K22
+	measure 'Eventos (hora anterior)' =
+			VAR _agora = NOW ()
+			RETURN
+			    CALCULATE (
+			        COUNTROWS ( rt_project_events ),
+			        rt_project_events[consumed_at] >= _agora - 2 / 24,
+			        rt_project_events[consumed_at] < _agora - 1 / 24
+			    ) + 0
+		formatString: #,0
+		displayFolder: 4. Ao vivo
+		lineageTag: a9a1d951-bc97-4d25-b12c-2509979f3830
+
+	/// K22
+	measure 'Eventos — var. % vs hora anterior' =
+			VAR _atual = [Eventos (última hora)]
+			VAR _anterior = [Eventos (hora anterior)]
+			RETURN
+			    IF ( _atual = 0 && _anterior = 0, 0, DIVIDE ( _atual - _anterior, _anterior ) )
+		formatString: +0% "vs hora anterior";-0% "vs hora anterior";0% "vs hora anterior"
+		displayFolder: 4. Ao vivo
+		lineageTag: 1cb42d93-f333-45cc-838d-b3e4687e2669
+
+	/// K26 — Eventos nas últimas 24 h (barras por event_type). Sem "+ 0": ver medidas.dax.
+	measure 'Eventos (24h)' =
+			VAR _desde = NOW () - 1
+			RETURN
+			    CALCULATE ( COUNTROWS ( rt_project_events ), rt_project_events[consumed_at] >= _desde )
+		formatString: #,0
+		displayFolder: 4. Ao vivo
+		lineageTag: 46b3e2b5-43f2-454f-92b4-03a919683250
+
+	/// K22 — Aprovações recebidas nas últimas 24 h.
+	measure 'Aprovações (24h)' =
+			VAR _desde = NOW () - 1
+			RETURN
+			    CALCULATE (
+			        COUNTROWS ( rt_project_events ),
+			        KEEPFILTERS ( rt_project_events[event_type] = "PROJECT_APPROVED" ),
+			        rt_project_events[consumed_at] >= _desde
+			    ) + 0
+		formatString: #,0
+		displayFolder: 4. Ao vivo
+		lineageTag: 223d0efe-cfa8-4b38-b5c4-6144e1188352
+
+	/// K23 — Compromisso atual dos projetos com aprovação recebida nas últimas 24 h. TREATAS em vez de relacionamento: o conector PostgreSQL não dobra junções de texto em DirectQuery.
+	measure 'Valor aprovado (24h) (US$)' =
+			VAR _desde = NOW () - 1
+			VAR _ids =
+			    CALCULATETABLE (
+			        VALUES ( rt_project_events[project_id] ),
+			        KEEPFILTERS ( rt_project_events[event_type] = "PROJECT_APPROVED" ),
+			        rt_project_events[consumed_at] >= _desde
+			    )
+			RETURN
+			    CALCULATE ( SUM ( rt_projects_latest[total_commitment_usd] ), TREATAS ( _ids, rt_projects_latest[project_id] ) ) + 0
+		formatString: #,0
+		displayFolder: 4. Ao vivo
+		lineageTag: 6c9dd1f9-5ed6-4e97-896e-045e7c0a0e8a
+
+	/// K23 — Projetos com aprovação recebida nas últimas 24 h (TREATAS, ver Valor aprovado (24h)).
+	measure 'Projetos aprovados (24h)' =
+			VAR _desde = NOW () - 1
+			VAR _ids =
+			    CALCULATETABLE (
+			        VALUES ( rt_project_events[project_id] ),
+			        KEEPFILTERS ( rt_project_events[event_type] = "PROJECT_APPROVED" ),
+			        rt_project_events[consumed_at] >= _desde
+			    )
+			RETURN
+			    CALCULATE ( COUNTROWS ( rt_projects_latest ), TREATAS ( _ids, rt_projects_latest[project_id] ) ) + 0
+		formatString: #,0
+		displayFolder: 4. Ao vivo
+		lineageTag: d637e05e-c26a-4d06-bba7-69dd48c05747
+
+	/// K23
+	measure 'Valor médio aprovado (24h) (US$)' = DIVIDE ( [Valor aprovado (24h) (US$)], [Projetos aprovados (24h)], 0 )
+		formatString: "média US$ "#,0
+		displayFolder: 4. Ao vivo
+		lineageTag: a57074a6-88dc-49a4-b450-36ae68bcd9d1
+
+	/// K24 — Alertas LARGE_APPROVAL criados nas últimas 24 h.
+	measure 'Alertas (24h)' =
+			VAR _desde = NOW () - 1
+			RETURN
+			    CALCULATE ( COUNTROWS ( rt_alerts ), rt_alerts[created_at] >= _desde ) + 0
+		formatString: #,0
+		displayFolder: 4. Ao vivo
+		lineageTag: 3cded788-d5ee-4b63-aa15-d5cea3d7dc25
+
+	/// K25 — Hora em que o último evento chegou ao rt (horário local: o Desktop converte o timestamptz).
+	measure 'Último evento recebido' = MAX ( rt_project_events[consumed_at] )
+		formatString: dd/mm/yyyy hh:nn:ss
+		displayFolder: 4. Ao vivo
+		lineageTag: c51694be-c801-4047-b399-b7630573a4c9
+
+	/// K25 — Substitui o cartão "Lag dos consumidores" (o usuário powerbi não lê ops.kafka_lag).
+	measure 'Minutos desde o último evento' =
+			VAR _ultimo = [Último evento recebido]
+			RETURN
+			    IF ( NOT ISBLANK ( _ultimo ), DATEDIFF ( _ultimo, NOW (), MINUTE ) )
+		formatString: 0
+		displayFolder: 4. Ao vivo
+		lineageTag: 5a910328-50a3-4c6f-8b5d-4e20fb13ee21
+
+	/// K25 — Indicador "ao vivo · último evento há N min" do cabeçalho.
+	measure 'Status do stream' =
+			VAR _min = [Minutos desde o último evento]
+			RETURN
+			    SWITCH (
+			        TRUE (),
+			        ISBLANK ( _min ), "sem eventos no rt",
+			        _min <= 5, "ao vivo · último evento há " & _min & " min",
+			        "sem eventos novos há " & _min & " min"
+			    )
+		displayFolder: 4. Ao vivo
+		lineageTag: ded7ce83-f280-4598-bbf5-a4b9cd680e37
+
+	/// K28 — Projetos no estado atual do rt.
+	measure 'Projetos no rt' = COUNTROWS ( rt_projects_latest )
+		formatString: #,0
+		displayFolder: 4. Ao vivo
+		lineageTag: 6c5aa7a7-fc05-47c4-a190-fbca9fa4664f
+
+	/// K28
+	measure 'Projetos ativos no rt' = CALCULATE ( COUNTROWS ( rt_projects_latest ), rt_projects_latest[status] = "Active" )
+		formatString: #,0
+		displayFolder: 4. Ao vivo
+		lineageTag: c7093c2d-fbf7-47b5-a399-82148360b603
+
+	/// Para a detecção de alterações da atualização de página: muda a cada evento novo.
+	measure 'Último seq' = MAX ( rt_project_events[seq] )
+		formatString: 0
+		displayFolder: 4. Ao vivo
+		lineageTag: 165d0361-e4ab-49a2-9d38-ca22b49246a3
+
+	/// Perfil do País: nome do país no contexto (drill-through ou filtro de página).
+	measure 'País selecionado' = SELECTEDVALUE ( dim_country[country_name], "Vários países" )
+		displayFolder: 1. Visão Global
+		lineageTag: 8fa8cb2f-3fa9-4249-9d9e-ae3dcc0395e5
+
+	/// Perfil do País: região do país no contexto.
+	measure 'Região selecionada' = SELECTEDVALUE ( dim_country[region], "—" )
+		displayFolder: 1. Visão Global
+		lineageTag: 64bb41c5-d886-4ac1-8f12-7fa3301b7abf
+
+	/// K13 — Valor comprometido em bilhões de US$, para tabelas (cartões e gráficos usam unidades automáticas).
+	measure 'Valor comprometido (US$ bi)' = DIVIDE ( [Valor comprometido (US$)], 1E9 )
+		formatString: #,0.0
+		displayFolder: 3. Projetos
+		lineageTag: 0b8f2016-e34d-462b-89f3-a8bb88eb779c
+
+	column _
+		isHidden
+		lineageTag: 5d652f6c-b047-4b4a-95d9-fd63eb871d24
+		isNameInferred
+		sourceColumn: [_]
+
+	partition _Medidas = calculated
+		mode: import
+		source = ROW ( "_", BLANK () )

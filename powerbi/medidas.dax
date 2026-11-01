@@ -1,0 +1,481 @@
+// =====================================================================================================
+// World Bank Data Platform — medidas DAX do relatório (Fase 14)
+// Guia: powerbi/GUIA_POWERBI.md
+// Validação: cada medida "KPI" tem a consulta equivalente em powerbi/validacao_kpis.sql (código Knn).
+//
+// Tabelas (renomeie no Power Query ao importar; o navegador traz "dw dim_country" etc.):
+//   Importar   : dim_country, dim_year, dim_indicator, fact_indicator, fact_project, agg_country_year, load_audit
+//   DirectQuery: rt_project_events, rt_projects_latest, rt_alerts
+//
+// Convenções:
+//   * Estoque (população, PIB, %): valor de UM ano — o [Ano de referência] — nunca soma de anos.
+//   * Fluxo (projetos, valor comprometido): soma no período (fact_project liga em dim_year por approval_year).
+//   * Medidas de indicador filtram dim_country[is_aggregate] = FALSE (World, regiões e faixas de renda
+//     contariam países em dobro). FCS (Fragile and conflict affected situations), agregado que só existe no
+//     Kaggle, já chega como is_aggregate = TRUE (KAGGLE_ONLY_AGGREGATES no silver).
+//   * Percentuais entre países: média ponderada pela população, só nas linhas com os dois valores.
+//   * Medidas de projetos NÃO filtram dim_country: 659 projetos regionais/multipaís têm country_code nulo e
+//     sumiriam (nenhum projeto aponta para agregado).
+//   * Página "Ao vivo" (DirectQuery): contagens/valores dos CARTÕES terminam em "+ 0" (mostra 0, não
+//     "(Em branco)"); o gráfico por consumed_at filtra a medida > 0 para não listar os horários sem eventos.
+//     Medida de gráfico agrupado por coluna de texto (Eventos (24h), por event_type) fica SEM "+ 0" — ver K26.
+//     Além disso, só COUNTROWS/SUM/MAX com filtros simples; janelas por consumed_at /
+//     created_at (chegada ao rt) — o event_time do replay é histórico (2000–2018) e não serve para "agora".
+//     NOW() porque o Desktop converte o timestamptz do Postgres (UTC) para o horário local — confirmado em
+//     30/10/2026: consumed_at 19:07 UTC aparece como 16:07 (ver GUIA, seção "Fuso horário").
+// =====================================================================================================
+
+
+// -----------------------------------------------------------------------------------------------------
+// 0. Ano de referência e cobertura
+// -----------------------------------------------------------------------------------------------------
+
+// Menor nº de países (não agregados) com valor entre os 4 indicadores, no(s) ano(s) do contexto.
+// Ignora filtros de país/região: a cobertura é sempre do universo inteiro. Formato: 0
+Cobertura mínima de países =
+VAR _pop =
+    CALCULATE (
+        COUNTROWS ( agg_country_year ),
+        NOT ISBLANK ( agg_country_year[population] ),
+        REMOVEFILTERS ( dim_country ),
+        dim_country[is_aggregate] = FALSE ()
+    )
+VAR _pib =
+    CALCULATE (
+        COUNTROWS ( agg_country_year ),
+        NOT ISBLANK ( agg_country_year[gdp_usd] ),
+        REMOVEFILTERS ( dim_country ),
+        dim_country[is_aggregate] = FALSE ()
+    )
+VAR _rural =
+    CALCULATE (
+        COUNTROWS ( agg_country_year ),
+        NOT ISBLANK ( agg_country_year[rural_population_pct] ),
+        REMOVEFILTERS ( dim_country ),
+        dim_country[is_aggregate] = FALSE ()
+    )
+VAR _eletricidade =
+    CALCULATE (
+        COUNTROWS ( agg_country_year ),
+        NOT ISBLANK ( agg_country_year[electricity_access_pct] ),
+        REMOVEFILTERS ( dim_country ),
+        dim_country[is_aggregate] = FALSE ()
+    )
+RETURN
+    MIN ( MIN ( _pop, _pib ), MIN ( _rural, _eletricidade ) )
+
+// K00 — Regra do "último ano": com UM ano no contexto (fatia de ano, eixo de gráfico, drill-through com ano),
+// usa esse ano. Com vários anos ou nenhum filtro, usa o último ano do contexto em que os 4 indicadores têm
+// ≥ 180 países (mesmo limiar do coverage_check/data_quality). Hoje = 2024 (2025 não tem eletricidade e o PIB
+// 2025 só cobre 186 países). Formato: 0 (sem separador de milhar)
+Ano de referência =
+VAR _anosCobertos =
+    FILTER ( VALUES ( dim_year[year] ), [Cobertura mínima de países] >= 180 )
+RETURN
+    IF (
+        HASONEVALUE ( dim_year[year] ),
+        VALUES ( dim_year[year] ),
+        MAXX ( _anosCobertos, dim_year[year] )
+    )
+
+// Rótulo para títulos/subtítulos dinâmicos ("2024 · Todas as regiões"). Formato: texto
+Rótulo do contexto =
+VAR _regiao =
+    IF ( ISFILTERED ( dim_country[region] ), SELECTEDVALUE ( dim_country[region], "Várias regiões" ), "Todas as regiões" )
+RETURN
+    [Ano de referência] & " · " & _regiao
+
+// Cabeçalho "Atualizado em …": última carga do dw (dw.load_audit). Formato: dd/mm/yyyy hh:nn
+Última carga do DW =
+MAX ( load_audit[loaded_at] )
+
+
+// -----------------------------------------------------------------------------------------------------
+// 1. Visão Global — estoque (um ano)
+// -----------------------------------------------------------------------------------------------------
+
+// K01 — Soma da população dos países no ano de referência. Formato: #,0 (cartão: unidades automáticas → "8,12 bi")
+População =
+VAR _ano = [Ano de referência]
+RETURN
+    CALCULATE (
+        SUM ( agg_country_year[population] ),
+        dim_year[year] = _ano,
+        KEEPFILTERS ( dim_country[is_aggregate] = FALSE () )
+    )
+
+// K02 — Crescimento anual composto da população em 10 anos ((P_ano / P_ano-10)^(1/10) − 1).
+// Formato: +0,0% "a.a. em 10 anos";-0,0% "a.a. em 10 anos" (o texto aparece no subtítulo do cartão)
+População — cresc. a.a. em 10 anos =
+VAR _ano = [Ano de referência]
+VAR _atual = [População]
+VAR _base = CALCULATE ( [População], dim_year[year] = _ano - 10 )
+RETURN
+    IF ( _base > 0 && _atual > 0, POWER ( DIVIDE ( _atual, _base ), 0.1 ) - 1 )
+
+// K03 — PIB (US$ correntes) somado entre os países com valor no ano. Formato: #,0 (cartão: "110,6 tri")
+PIB (US$) =
+VAR _ano = [Ano de referência]
+RETURN
+    CALCULATE (
+        SUM ( agg_country_year[gdp_usd] ),
+        dim_year[year] = _ano,
+        KEEPFILTERS ( dim_country[is_aggregate] = FALSE () )
+    )
+
+// K03 — Variação do PIB frente ao ano anterior (o conjunto de países pode mudar entre anos).
+// Formato: +0,0% "vs ano anterior";-0,0% "vs ano anterior"
+PIB — var. % vs ano anterior =
+VAR _ano = [Ano de referência]
+VAR _anterior = CALCULATE ( [PIB (US$)], dim_year[year] = _ano - 1 )
+RETURN
+    DIVIDE ( [PIB (US$)] - _anterior, _anterior )
+
+// K04 — PIB per capita ponderado = Σ PIB / Σ população, só países com os dois valores no ano.
+// Para um único país é igual a agg_country_year[gdp_per_capita_usd]. Formato: #,0 (US$)
+PIB per capita (US$) =
+VAR _ano = [Ano de referência]
+VAR _pib =
+    CALCULATE (
+        SUM ( agg_country_year[gdp_usd] ),
+        dim_year[year] = _ano,
+        NOT ISBLANK ( agg_country_year[population] ),
+        NOT ISBLANK ( agg_country_year[gdp_usd] ),
+        KEEPFILTERS ( dim_country[is_aggregate] = FALSE () )
+    )
+VAR _pop =
+    CALCULATE (
+        SUM ( agg_country_year[population] ),
+        dim_year[year] = _ano,
+        NOT ISBLANK ( agg_country_year[population] ),
+        NOT ISBLANK ( agg_country_year[gdp_usd] ),
+        KEEPFILTERS ( dim_country[is_aggregate] = FALSE () )
+    )
+RETURN
+    DIVIDE ( _pib, _pop )
+
+// K04 — Formato: +0,0% "vs ano anterior";-0,0% "vs ano anterior"
+PIB per capita — var. % vs ano anterior =
+VAR _ano = [Ano de referência]
+VAR _anterior = CALCULATE ( [PIB per capita (US$)], dim_year[year] = _ano - 1 )
+RETURN
+    DIVIDE ( [PIB per capita (US$)] - _anterior, _anterior )
+
+// K09 — Posição do país no ranking de PIB do ano (1 = maior), entre países não agregados.
+// Para o cartão do Perfil do País (drill-through); em branco se o contexto não tem exatamente um país. Formato: 0"º"
+Posição no ranking de PIB =
+VAR _ano = [Ano de referência]
+VAR _pib = [PIB (US$)]
+VAR _todos =
+    CALCULATETABLE (
+        ADDCOLUMNS ( VALUES ( dim_country[country_code] ), "@pib", [PIB (US$)] ),
+        REMOVEFILTERS ( dim_country ),
+        dim_year[year] = _ano
+    )
+RETURN
+    IF (
+        HASONEVALUE ( dim_country[country_code] ) && NOT ISBLANK ( _pib ),
+        COUNTROWS ( FILTER ( _todos, [@pib] > _pib ) ) + 1
+    )
+
+// Perfil do País: nome do país no contexto (drill-through ou filtro de página). Formato: texto
+País selecionado =
+SELECTEDVALUE ( dim_country[country_name], "Vários países" )
+
+// Perfil do País: região do país no contexto. Formato: texto
+Região selecionada =
+SELECTEDVALUE ( dim_country[region], "—" )
+
+
+// -----------------------------------------------------------------------------------------------------
+// 2. Energia e Desenvolvimento — % ponderados pela população
+// -----------------------------------------------------------------------------------------------------
+
+// K05 — Acesso à eletricidade (% da população), média ponderada pela população. Formato: 0,0 (rótulo "%")
+// Os valores da coluna já estão em 0–100: não use o formato "%" do Power BI (multiplicaria por 100).
+Acesso à eletricidade (%) =
+VAR _ano = [Ano de referência]
+VAR _ponderado =
+    CALCULATE (
+        SUMX ( agg_country_year, agg_country_year[population] * agg_country_year[electricity_access_pct] ),
+        dim_year[year] = _ano,
+        NOT ISBLANK ( agg_country_year[population] ),
+        NOT ISBLANK ( agg_country_year[electricity_access_pct] ),
+        KEEPFILTERS ( dim_country[is_aggregate] = FALSE () )
+    )
+VAR _pop =
+    CALCULATE (
+        SUM ( agg_country_year[population] ),
+        dim_year[year] = _ano,
+        NOT ISBLANK ( agg_country_year[population] ),
+        NOT ISBLANK ( agg_country_year[electricity_access_pct] ),
+        KEEPFILTERS ( dim_country[is_aggregate] = FALSE () )
+    )
+RETURN
+    DIVIDE ( _ponderado, _pop )
+
+// K05 — Diferença em pontos percentuais frente a 10 anos antes.
+// Formato: +0,0" p.p. em 10 anos";-0,0" p.p. em 10 anos"
+Acesso à eletricidade — var. p.p. em 10 anos =
+VAR _ano = [Ano de referência]
+VAR _base = CALCULATE ( [Acesso à eletricidade (%)], dim_year[year] = _ano - 10 )
+RETURN
+    IF ( NOT ISBLANK ( _base ), [Acesso à eletricidade (%)] - _base )
+
+// K05 — Variante para o gráfico de halteres por região (2000 → ano de referência). Formato: 0,0
+Acesso à eletricidade em 2000 (%) =
+CALCULATE ( [Acesso à eletricidade (%)], dim_year[year] = 2000 )
+
+// K06 — Pessoas sem eletricidade = Σ população × (100 − acesso) / 100. Formato: #,0 (cartão: "655 mi")
+Pessoas sem eletricidade =
+VAR _ano = [Ano de referência]
+RETURN
+    CALCULATE (
+        SUMX (
+            agg_country_year,
+            agg_country_year[population] * ( 100 - agg_country_year[electricity_access_pct] ) / 100
+        ),
+        dim_year[year] = _ano,
+        NOT ISBLANK ( agg_country_year[population] ),
+        NOT ISBLANK ( agg_country_year[electricity_access_pct] ),
+        KEEPFILTERS ( dim_country[is_aggregate] = FALSE () )
+    )
+
+// K06 — Variação absoluta em 10 anos (negativo = menos gente sem luz). Formato: +#,0;-#,0
+Pessoas sem eletricidade — var. em 10 anos =
+VAR _ano = [Ano de referência]
+VAR _base = CALCULATE ( [Pessoas sem eletricidade], dim_year[year] = _ano - 10 )
+RETURN
+    IF ( NOT ISBLANK ( _base ), [Pessoas sem eletricidade] - _base )
+
+// K07 — População rural (% do total), média ponderada pela população. Formato: 0,0 (rótulo "%")
+População rural (%) =
+VAR _ano = [Ano de referência]
+VAR _ponderado =
+    CALCULATE (
+        SUMX ( agg_country_year, agg_country_year[population] * agg_country_year[rural_population_pct] ),
+        dim_year[year] = _ano,
+        NOT ISBLANK ( agg_country_year[population] ),
+        NOT ISBLANK ( agg_country_year[rural_population_pct] ),
+        KEEPFILTERS ( dim_country[is_aggregate] = FALSE () )
+    )
+VAR _pop =
+    CALCULATE (
+        SUM ( agg_country_year[population] ),
+        dim_year[year] = _ano,
+        NOT ISBLANK ( agg_country_year[population] ),
+        NOT ISBLANK ( agg_country_year[rural_population_pct] ),
+        KEEPFILTERS ( dim_country[is_aggregate] = FALSE () )
+    )
+RETURN
+    DIVIDE ( _ponderado, _pop )
+
+// K07 — Formato: +0,0" p.p. em 10 anos";-0,0" p.p. em 10 anos"
+População rural — var. p.p. em 10 anos =
+VAR _ano = [Ano de referência]
+VAR _base = CALCULATE ( [População rural (%)], dim_year[year] = _ano - 10 )
+RETURN
+    IF ( NOT ISBLANK ( _base ), [População rural (%)] - _base )
+
+// K08 — Países com acesso universal (≥ 99,5% da população com eletricidade) no ano. Formato: 0
+Países com acesso universal =
+VAR _ano = [Ano de referência]
+RETURN
+    CALCULATE (
+        COUNTROWS ( agg_country_year ),
+        dim_year[year] = _ano,
+        agg_country_year[electricity_access_pct] >= 99.5,
+        KEEPFILTERS ( dim_country[is_aggregate] = FALSE () )
+    )
+
+
+// -----------------------------------------------------------------------------------------------------
+// 3. Projetos do Banco Mundial — fluxo (soma no período de aprovação)
+//    total_amount_usd = compromisso IBRD + IDA; doações (grant) ficam à parte.
+// -----------------------------------------------------------------------------------------------------
+
+// K13 — Formato: #,0
+Projetos aprovados =
+COUNTROWS ( fact_project )
+
+// K13 — Soma do compromisso (IBRD + IDA) dos projetos aprovados no período. Formato: #,0 (cartão: "584 bi")
+Valor comprometido (US$) =
+SUM ( fact_project[total_amount_usd] )
+
+// K13 — Doações (grant) dos projetos aprovados no período. Formato: #,0
+Doações (US$) =
+SUM ( fact_project[grant_amount_usd] )
+
+// K13 — Valor médio por projeto com compromisso > 0 (≈ 29% dos projetos são só doação/assistência e têm
+// total 0; incluí-los derrubaria a média). Formato: #,0 (cartão: "106 mi")
+Valor médio por projeto (US$) =
+DIVIDE (
+    [Valor comprometido (US$)],
+    CALCULATE ( COUNTROWS ( fact_project ), fact_project[total_amount_usd] > 0 )
+)
+
+// K13 — Status atual (último evento do stream). Formato: #,0
+Projetos ativos =
+CALCULATE ( COUNTROWS ( fact_project ), fact_project[status] = "Active" )
+
+// K13 — Formato: 0,0% "do total"
+Projetos ativos — % do total =
+DIVIDE ( [Projetos ativos], [Projetos aprovados] )
+
+// K13 — Formato: #,0
+Projetos encerrados =
+CALCULATE ( COUNTROWS ( fact_project ), fact_project[status] = "Closed" )
+
+// K13 — Formato: 0,0%
+Projetos encerrados — % do total =
+DIVIDE ( [Projetos encerrados], [Projetos aprovados] )
+
+// K13 — Valor comprometido em bilhões, para colunas de tabela (cartões e gráficos usam unidades automáticas).
+// Formato: #,0.0
+Valor comprometido (US$ bi) =
+DIVIDE ( [Valor comprometido (US$)], 1E9 )
+
+// K15 — Participação no valor do que está selecionado (barras por região, setor). Formato: 0,0%
+% do valor comprometido =
+DIVIDE ( [Valor comprometido (US$)], CALCULATE ( [Valor comprometido (US$)], ALLSELECTED ( fact_project ) ) )
+
+// K17 — Participação no nº de projetos (barras por instrumento). Formato: 0,0%
+% dos projetos =
+DIVIDE ( [Projetos aprovados], CALCULATE ( [Projetos aprovados], ALLSELECTED ( fact_project ) ) )
+
+// K19 — Cartão "Valor comprometido BM" da Visão Global/Perfil: projetos aprovados no ano de referência.
+// Formato: #,0
+Valor comprometido no ano de referência (US$) =
+VAR _ano = [Ano de referência]
+RETURN
+    CALCULATE ( [Valor comprometido (US$)], dim_year[year] = _ano )
+
+// K19 — Formato: #,0 "projetos"
+Projetos aprovados no ano de referência =
+VAR _ano = [Ano de referência]
+RETURN
+    CALCULATE ( [Projetos aprovados], dim_year[year] = _ano )
+
+
+// -----------------------------------------------------------------------------------------------------
+// 4. Ao vivo — DirectQuery sobre rt (rt_project_events, rt_projects_latest, rt_alerts)
+//    SEM relacionamentos entre as tabelas rt_*: o conector PostgreSQL não dobra junções por project_id (texto)
+//    em DirectQuery e todo visual que atravessasse a relação falhava. Filtro entre elas só com TREATAS.
+// -----------------------------------------------------------------------------------------------------
+
+// K22 — Eventos que chegaram ao rt na última hora. Formato: #,0
+Eventos (última hora) =
+VAR _desde = NOW () - 1 / 24
+RETURN
+    CALCULATE ( COUNTROWS ( rt_project_events ), rt_project_events[consumed_at] >= _desde ) + 0
+
+// K22 — Formato: #,0
+Eventos (hora anterior) =
+VAR _agora = NOW ()
+RETURN
+    CALCULATE (
+        COUNTROWS ( rt_project_events ),
+        rt_project_events[consumed_at] >= _agora - 2 / 24,
+        rt_project_events[consumed_at] < _agora - 1 / 24
+    ) + 0
+
+// K22 — Zero quando as duas horas estão sem eventos (em branco só se a hora anterior for 0 e a atual não).
+// Formato: +0% "vs hora anterior";-0% "vs hora anterior";0% "vs hora anterior"
+Eventos — var. % vs hora anterior =
+VAR _atual = [Eventos (última hora)]
+VAR _anterior = [Eventos (hora anterior)]
+RETURN
+    IF ( _atual = 0 && _anterior = 0, 0, DIVIDE ( _atual - _anterior, _anterior ) )
+
+// K26 — Eventos nas últimas 24 h (barras por event_type; fatia por source). Formato: #,0
+// SEM "+ 0": no gráfico por event_type, uma medida que nunca fica em branco obriga o motor a cruzar a lista de
+// tipos com as contagens — em DirectQuery isso vira junção por texto, que o conector PostgreSQL não dobra, e o
+// visual falhava ao filtrar Tipo de evento ou Fonte (31/10/2026). Sem eventos, as barras somem (não mostram 0).
+Eventos (24h) =
+VAR _desde = NOW () - 1
+RETURN
+    CALCULATE ( COUNTROWS ( rt_project_events ), rt_project_events[consumed_at] >= _desde )
+
+// K22 — Aprovações recebidas nas últimas 24 h. Formato: #,0
+// KEEPFILTERS no event_type (também em Valor/Projetos aprovados (24h)): sem ele o filtro da medida SUBSTITUI a
+// fatia Tipo de evento, e com "PROJECT_CLOSED" selecionado os cartões seguiam mostrando aprovações (31/10/2026).
+Aprovações (24h) =
+VAR _desde = NOW () - 1
+RETURN
+    CALCULATE (
+        COUNTROWS ( rt_project_events ),
+        KEEPFILTERS ( rt_project_events[event_type] = "PROJECT_APPROVED" ),
+        rt_project_events[consumed_at] >= _desde
+    ) + 0
+
+// K23 — Compromisso ATUAL (rt_projects_latest) dos projetos com aprovação recebida nas últimas 24 h.
+// O valor não está numa coluna de rt.project_events (só no payload jsonb); os project_id dos eventos filtram
+// rt_projects_latest com TREATAS (vira WHERE … IN no SQL). Não use relacionamento/CROSSFILTER: o conector
+// PostgreSQL não dobra junções de texto em DirectQuery ("avaliação local de Table.Join … com comparadores de
+// igualdade de chave não tem suporte"). Formato: #,0 (cartão: "4,8 bi")
+Valor aprovado (24h) (US$) =
+VAR _desde = NOW () - 1
+VAR _ids =
+    CALCULATETABLE (
+        VALUES ( rt_project_events[project_id] ),
+        KEEPFILTERS ( rt_project_events[event_type] = "PROJECT_APPROVED" ),
+        rt_project_events[consumed_at] >= _desde
+    )
+RETURN
+    CALCULATE ( SUM ( rt_projects_latest[total_commitment_usd] ), TREATAS ( _ids, rt_projects_latest[project_id] ) ) + 0
+
+// K23 — Projetos com aprovação recebida nas últimas 24 h (TREATAS, ver Valor aprovado (24h)). Formato: #,0
+Projetos aprovados (24h) =
+VAR _desde = NOW () - 1
+VAR _ids =
+    CALCULATETABLE (
+        VALUES ( rt_project_events[project_id] ),
+        KEEPFILTERS ( rt_project_events[event_type] = "PROJECT_APPROVED" ),
+        rt_project_events[consumed_at] >= _desde
+    )
+RETURN
+    CALCULATE ( COUNTROWS ( rt_projects_latest ), TREATAS ( _ids, rt_projects_latest[project_id] ) ) + 0
+
+// K23 — Formato: "média US$ "#,0 (cartão: "média US$ 126 mi"; 0 sem aprovações)
+Valor médio aprovado (24h) (US$) =
+DIVIDE ( [Valor aprovado (24h) (US$)], [Projetos aprovados (24h)], 0 )
+
+// K24 — Alertas LARGE_APPROVAL criados nas últimas 24 h (aprovação ≥ ALERT_MIN_COMMITMENT_USD). Formato: #,0
+Alertas (24h) =
+VAR _desde = NOW () - 1
+RETURN
+    CALCULATE ( COUNTROWS ( rt_alerts ), rt_alerts[created_at] >= _desde ) + 0
+
+// K25 — Hora (local, convertida pelo Desktop) em que o último evento chegou ao rt. Formato: dd/mm/yyyy hh:nn:ss
+Último evento recebido =
+MAX ( rt_project_events[consumed_at] )
+
+// K25 — Substitui o cartão "Lag dos consumidores" da página Ao vivo: o usuário powerbi não lê ops.kafka_lag
+// (lag fica em /v1/pipeline/status da API). Formato: 0
+Minutos desde o último evento =
+VAR _ultimo = [Último evento recebido]
+RETURN
+    IF ( NOT ISBLANK ( _ultimo ), DATEDIFF ( _ultimo, NOW (), MINUTE ) )
+
+// K25 — Indicador "ao vivo · último evento há N min" do cabeçalho. Formato: texto
+Status do stream =
+VAR _min = [Minutos desde o último evento]
+RETURN
+    SWITCH (
+        TRUE (),
+        ISBLANK ( _min ), "sem eventos no rt",
+        _min <= 5, "ao vivo · último evento há " & _min & " min",
+        "sem eventos novos há " & _min & " min"
+    )
+
+// K28 — Projetos no estado atual do rt (deve bater com fact_project depois do micro-lote). Formato: #,0
+Projetos no rt =
+COUNTROWS ( rt_projects_latest )
+
+// K28 — Formato: #,0
+Projetos ativos no rt =
+CALCULATE ( COUNTROWS ( rt_projects_latest ), rt_projects_latest[status] = "Active" )
+
+// Para "Detecção de alterações" da atualização de página (Premium/Fabric): muda a cada evento novo. Formato: 0
+Último seq =
+MAX ( rt_project_events[seq] )

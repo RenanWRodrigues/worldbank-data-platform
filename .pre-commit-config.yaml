@@ -1,0 +1,32 @@
+# Instalar: pre-commit install   |   atualizar versões: pre-commit autoupdate
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+        args: [--unsafe]          # docker-compose usa âncoras/merge keys
+      - id: check-json
+      - id: check-added-large-files
+        args: [--maxkb=1024]
+        exclude: ^docs/img/        # infográfico (PNG, GIF, MP4) passa de 1 MB
+      - id: detect-private-key
+      - id: forbid-new-submodules
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.17.3
+    hooks:
+      - id: ruff-check
+        args: [--fix]
+      - id: ruff-format
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.0
+    hooks:
+      - id: gitleaks
+  - repo: local
+    hooks:
+      - id: no-data-files
+        name: impedir commit de dados e .pbix
+        entry: arquivos de dados ou .pbix não devem ser versionados
+        language: fail
+        files: '^data/(raw|landing)/(?!\.gitkeep$)|\.pbix$'

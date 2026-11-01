@@ -1,0 +1,72 @@
+table rt_project_events
+	lineageTag: 86a79695-06b6-498b-8ed1-a41d1c400524
+
+	column event_id
+		dataType: string
+		lineageTag: 78e63502-d9f2-42ef-8c0b-008d4411390d
+		sourceColumn: event_id
+
+	column seq
+		dataType: int64
+		lineageTag: f021e2f7-825a-4535-8b4e-b42699784bb8
+		summarizeBy: none
+		sourceColumn: seq
+
+	column event_type
+		dataType: string
+		lineageTag: 1b3c0dd4-7fa3-4f13-9dff-550b7b0af4eb
+		sourceColumn: event_type
+
+	column project_id
+		dataType: string
+		lineageTag: 4d28c63e-8f38-4aa2-9069-bf281746a41c
+		sourceColumn: project_id
+
+	column event_time
+		dataType: dateTime
+		formatString: dd/mm/yyyy hh:nn:ss
+		lineageTag: 3156ed98-f6cb-46c0-a605-50c5d42ce4ec
+		sourceColumn: event_time
+
+	column produced_at
+		dataType: dateTime
+		formatString: dd/mm/yyyy hh:nn:ss
+		lineageTag: 09b2d7d3-ac68-4640-b227-e0b21679f84a
+		sourceColumn: produced_at
+
+	column source
+		dataType: string
+		lineageTag: efd5d557-b45c-414d-86b6-2757ab21ebf0
+		sourceColumn: source
+
+	column payload
+		dataType: string
+		lineageTag: e765ba5b-a7d8-4631-901b-f635d5d17090
+		sourceColumn: payload
+
+	column kafka_partition
+		dataType: int64
+		lineageTag: 41658fae-921a-4bc8-91e2-c768452a646e
+		summarizeBy: none
+		sourceColumn: kafka_partition
+
+	column kafka_offset
+		dataType: int64
+		lineageTag: 7f4b98be-df3f-4358-bb7f-f21e2c07a8fb
+		summarizeBy: none
+		sourceColumn: kafka_offset
+
+	column consumed_at
+		dataType: dateTime
+		formatString: dd/mm/yyyy hh:nn:ss
+		lineageTag: e7b4f50e-de49-4a01-80a8-fb14f01a9adb
+		sourceColumn: consumed_at
+
+	partition rt_project_events = m
+		mode: directQuery
+		source =
+				let
+				    Fonte = PostgreSQL.Database("127.0.0.1:5433", "worldbank"),
+				    Tabela = Fonte{[Schema = "rt", Item = "project_events"]}[Data]
+				in
+				    Tabela

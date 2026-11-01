@@ -1,0 +1,11 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/gitIntegration/platformProperties/2.0.0/schema.json",
+  "metadata": {
+    "type": "SemanticModel",
+    "displayName": "WorldBank"
+  },
+  "config": {
+    "version": "2.0",
+    "logicalId": "7003b82a-cd56-4707-8a4b-efbf9d8c5f22"
+  }
+}

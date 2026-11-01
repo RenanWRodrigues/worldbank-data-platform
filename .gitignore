@@ -1,0 +1,36 @@
+# segredos
+.env
+.env.*
+!.env.example
+kaggle.json
+
+# dados (baixados ou gerados)
+data/raw/*
+data/landing/*
+!data/raw/.gitkeep
+!data/landing/.gitkeep
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Databricks / Spark
+.databricks/
+spark-warehouse/
+metastore_db/
+derby.log
+
+# Power BI (versione .pbip, não .pbix)
+*.pbix
+**/.pbi/localSettings.json
+**/.pbi/cache.abf
+
+# SO/IDE
+.DS_Store
+.idea/
+.vscode/

@@ -1,0 +1,120 @@
+table rt_projects_latest
+	lineageTag: 8e8c8901-3cb8-4035-8b3b-057578df7886
+
+	column project_id
+		dataType: string
+		isKey
+		lineageTag: 1477f17c-9711-499d-9cb6-2e8c4608ea8e
+		sourceColumn: project_id
+
+	column project_name
+		dataType: string
+		lineageTag: ac2b2b24-f5d5-4067-8a21-3168ca77f6db
+		sourceColumn: project_name
+
+	column country_iso2
+		dataType: string
+		lineageTag: c33e8a4b-4df0-41c9-b43f-fd31796aa8a9
+		sourceColumn: country_iso2
+
+	column country_name
+		dataType: string
+		lineageTag: 33927cb6-198e-4118-9785-c3edb907f049
+		sourceColumn: country_name
+
+	column region_name
+		dataType: string
+		lineageTag: fdeb8e28-2fc8-4237-baf3-31d24cde01dc
+		sourceColumn: region_name
+
+	column status
+		dataType: string
+		lineageTag: 2b34f662-d990-4501-87cb-29443a94d1b0
+		sourceColumn: status
+
+	column total_commitment_usd
+		dataType: double
+		formatString: #,0
+		lineageTag: 75dfe8c8-97f0-4425-8753-51e2f435330f
+		sourceColumn: total_commitment_usd
+
+	column board_approval_date
+		dataType: dateTime
+		formatString: dd/mm/yyyy
+		sourceProviderType: date
+		lineageTag: 69f2cc33-dc68-4d13-873c-7d7a34712c74
+		summarizeBy: none
+		sourceColumn: board_approval_date
+
+		annotation UnderlyingDateTimeDataType = Date
+
+		annotation SummarizationSetBy = Automatic
+
+	column closing_date
+		dataType: dateTime
+		formatString: dd/mm/yyyy
+		sourceProviderType: date
+		lineageTag: db21085f-6fb3-4446-9f16-c59127a4a27d
+		summarizeBy: none
+		sourceColumn: closing_date
+
+		annotation UnderlyingDateTimeDataType = Date
+
+		annotation SummarizationSetBy = Automatic
+
+	column lending_instrument
+		dataType: string
+		lineageTag: 1813f3a8-37e4-459f-8988-f559e7d9bbed
+		sourceColumn: lending_instrument
+
+	column major_sector
+		dataType: string
+		lineageTag: 08f7c9d3-1ec5-4f71-87a9-454ce202f7ef
+		sourceColumn: major_sector
+
+	column last_event_id
+		dataType: string
+		lineageTag: b0d0f396-4500-4e94-a989-bf8188f03b03
+		sourceColumn: last_event_id
+
+	column last_event_type
+		dataType: string
+		lineageTag: 9586d24a-0f28-43b2-89f3-2960a8af843e
+		sourceColumn: last_event_type
+
+	column last_event_time
+		dataType: dateTime
+		formatString: dd/mm/yyyy hh:nn:ss
+		lineageTag: 35a1b1c8-93ca-45b8-96f0-8e876ca4d8b9
+		sourceColumn: last_event_time
+
+	column last_produced_at
+		dataType: dateTime
+		formatString: dd/mm/yyyy hh:nn:ss
+		lineageTag: 3044c25a-034d-4780-a54d-f3f197f09112
+		sourceColumn: last_produced_at
+
+	column updated_at
+		dataType: dateTime
+		formatString: dd/mm/yyyy hh:nn:ss
+		lineageTag: 8471b16d-dc39-4a25-9cc9-524dabc7cb15
+		sourceColumn: updated_at
+
+	column last_source
+		dataType: string
+		isNullable: false
+		sourceProviderType: nvarchar(max)
+		lineageTag: b0081da4-db26-4bc4-94a3-516f9aaba683
+		summarizeBy: none
+		sourceColumn: last_source
+
+		annotation SummarizationSetBy = Automatic
+
+	partition rt_projects_latest = m
+		mode: directQuery
+		source =
+				let
+				    Fonte = PostgreSQL.Database("127.0.0.1:5433", "worldbank"),
+				    Tabela = Fonte{[Schema = "rt", Item = "projects_latest"]}[Data]
+				in
+				    Tabela

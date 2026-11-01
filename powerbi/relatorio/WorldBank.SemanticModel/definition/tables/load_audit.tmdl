@@ -1,0 +1,38 @@
+table load_audit
+	lineageTag: c7de9b5a-fc79-43c0-9495-483c947fb03a
+
+	column load_id
+		dataType: int64
+		lineageTag: 9f9068de-08f8-45bb-b697-e7b64c984fef
+		summarizeBy: none
+		sourceColumn: load_id
+
+	column table_name
+		dataType: string
+		lineageTag: b19b8ee0-d4fc-41f5-b101-e1468a43c5e4
+		sourceColumn: table_name
+
+	column row_count
+		dataType: int64
+		lineageTag: 5e628887-daba-4e38-9270-d3622bbc1d5d
+		sourceColumn: row_count
+
+	column run_id
+		dataType: string
+		lineageTag: 440594bc-c2e5-4d54-8714-d0d29994b2ba
+		sourceColumn: run_id
+
+	column loaded_at
+		dataType: dateTime
+		formatString: dd/mm/yyyy hh:nn
+		lineageTag: 795da0f4-41c9-4542-b6db-7fabe856591f
+		sourceColumn: loaded_at
+
+	partition load_audit = m
+		mode: import
+		source =
+				let
+				    Fonte = PostgreSQL.Database("127.0.0.1:5433", "worldbank"),
+				    Tabela = Fonte{[Schema = "dw", Item = "load_audit"]}[Data]
+				in
+				    Tabela

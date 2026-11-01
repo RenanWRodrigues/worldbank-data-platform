@@ -1,0 +1,25 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/page/2.1.0/schema.json",
+  "name": "energia",
+  "displayName": "Energia e Desenvolvimento",
+  "displayOption": "FitToPage",
+  "height": 720,
+  "width": 1280,
+  "visualInteractions": [
+    {
+      "source": "97f6723492e458e78a02",
+      "target": "c1f01e05244e5c4fb1a7",
+      "type": "NoFilter"
+    },
+    {
+      "source": "97f6723492e458e78a02",
+      "target": "94b6752b33bc54eba38e",
+      "type": "NoFilter"
+    },
+    {
+      "source": "97f6723492e458e78a02",
+      "target": "a5f47777b48f54bda14a",
+      "type": "NoFilter"
+    }
+  ]
+}

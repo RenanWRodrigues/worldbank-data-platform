@@ -1,0 +1,44 @@
+table dim_country
+	lineageTag: 41627d94-4244-457d-abdb-4d5b4140cdf4
+
+	column country_code
+		dataType: string
+		isKey
+		lineageTag: d3b8e372-1d3f-4165-b9ea-63d386a74a6e
+		sourceColumn: country_code
+
+	column country_iso2
+		dataType: string
+		lineageTag: a58dbb8d-3c96-4655-aaa5-c1199718f8f3
+		sourceColumn: country_iso2
+
+	column country_name
+		dataType: string
+		lineageTag: 8d7f0ad2-ba7b-4c40-9f44-77460978fb41
+		sourceColumn: country_name
+
+	column region
+		dataType: string
+		lineageTag: 0454b443-7769-4560-a72f-47b439ccfb89
+		sourceColumn: region
+
+	column income_level
+		dataType: string
+		lineageTag: f62a89ec-f334-4147-94b6-16bfbef09212
+		sourceColumn: income_level
+
+	column is_aggregate
+		dataType: boolean
+		lineageTag: e7807630-3f4e-4ee9-b1b0-b3e9a1dfc98d
+		sourceColumn: is_aggregate
+
+	partition dim_country = m
+		mode: import
+		source =
+				let
+				    Fonte = PostgreSQL.Database("127.0.0.1:5433", "worldbank"),
+				    Tabela = Fonte{[Schema = "dw", Item = "dim_country"]}[Data]
+				in
+				    Tabela
+
+	annotation PBI_ResultType = Exception

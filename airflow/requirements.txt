@@ -1,0 +1,9 @@
+# Dependências da imagem do Airflow (instaladas com o arquivo de constraints da versão do Airflow)
+apache-airflow-providers-databricks==7.10.0
+apache-airflow-providers-postgres==6.6.0
+apache-airflow-providers-fab==3.4.0
+apache-airflow-providers-standard==1.12.0
+confluent-kafka==2.13.2
+databricks-sql-connector==4.2.5
+defusedxml==0.7.1  # kaggle_loader (bootstrap)
+pytest==8.3.4  # só para `make test-airflow` (integridade das DAGs no container)

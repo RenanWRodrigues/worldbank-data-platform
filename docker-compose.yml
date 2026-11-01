@@ -1,0 +1,338 @@
+# Stack local da World Bank Data Platform (ver README.md).
+# Segredos vêm do .env (make env); variáveis obrigatórias falham cedo com mensagem.
+name: worldbank-platform
+
+# Configuração comum dos serviços do Airflow (LocalExecutor, auth FAB, metadados no banco `airflow`)
+x-airflow-env: &airflow-env
+  AIRFLOW__CORE__EXECUTOR: LocalExecutor
+  AIRFLOW__CORE__AUTH_MANAGER: airflow.providers.fab.auth_manager.fab_auth_manager.FabAuthManager
+  AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+  AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "true"
+  AIRFLOW__CORE__DEFAULT_TIMEZONE: UTC
+  AIRFLOW__CORE__EXECUTION_API_SERVER_URL: http://airflow-apiserver:8080/execution/
+  AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER:-wb}:${POSTGRES_PASSWORD}@postgres:5432/airflow
+  # Segredo compartilhado entre os containers (tokens da Execution API e sessões da UI)
+  AIRFLOW__API_AUTH__JWT_SECRET: ${AIRFLOW_JWT_SECRET:?defina AIRFLOW_JWT_SECRET no .env}
+  AIRFLOW__API__SECRET_KEY: ${AIRFLOW_JWT_SECRET}
+  AIRFLOW__API__WORKERS: "1"  # um worker basta localmente e economiza memória
+  AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: "true"
+  # Conexões só por variável de ambiente (nada de credencial no código ou no banco do Airflow)
+  AIRFLOW_CONN_POSTGRES_DW: postgres://${POSTGRES_USER:-wb}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-worldbank}
+  AIRFLOW_CONN_DATABRICKS_DEFAULT: '{"conn_type": "databricks", "host": "${DATABRICKS_HOST:-}", "password": "${DATABRICKS_TOKEN:-}"}'
+  # Jobs do Databricks (DatabricksRunNowOperator) e SQL Warehouse lido pelo sync_gold
+  DATABRICKS_HTTP_PATH: ${DATABRICKS_HTTP_PATH:-}
+  DATABRICKS_JOB_ID_INDICATORS: ${DATABRICKS_JOB_ID_INDICATORS:-}
+  DATABRICKS_JOB_ID_PROJECTS: ${DATABRICKS_JOB_ID_PROJECTS:-}
+  DATABRICKS_CATALOG: ${DATABRICKS_CATALOG:-worldbank}
+  DATABRICKS_SCHEMA: ${DATABRICKS_SCHEMA:-lakehouse}
+  DATABRICKS_VOLUME: ${DATABRICKS_VOLUME:-landing}
+  # kafka_lag e data_quality da DAG de micro-lotes
+  KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+  KAFKA_MAX_LAG: ${KAFKA_MAX_LAG:-20000}
+  RT_DW_MAX_DELAY_MINUTES: ${RT_DW_MAX_DELAY_MINUTES:-60}
+  # DAG semanal (vazio = 4 indicadores padrão) e bootstrap do Kaggle (montado só para leitura)
+  WB_INDICATORS: ${WB_INDICATORS:-}
+  RAW_DATA_DIR: /opt/airflow/data/raw
+  # Código de airflow/include e de ingestion/ importável pelas DAGs
+  PYTHONPATH: /opt/airflow/include:/opt/airflow/ingestion
+  TZ: UTC
+
+x-airflow-common: &airflow-common
+  build: ./airflow
+  image: worldbank-platform/airflow:3.1.8
+  restart: unless-stopped
+  user: "${AIRFLOW_UID:-50000}:0"
+  environment: *airflow-env
+  volumes:
+    - ./airflow/dags:/opt/airflow/dags
+    - ./airflow/include:/opt/airflow/include
+    - ./airflow/tests:/opt/airflow/tests
+    - ./ingestion:/opt/airflow/ingestion:ro
+    - ./data/raw:/opt/airflow/data/raw:ro
+    - ./data/landing:/opt/airflow/data/landing
+    - airflow-logs:/opt/airflow/logs
+
+x-airflow-depends: &airflow-depends
+  postgres:
+    condition: service_healthy
+  airflow-init:
+    condition: service_completed_successfully
+
+x-airflow-healthcheck: &airflow-healthcheck
+  interval: 30s
+  timeout: 30s  # `airflow jobs check` carrega o Airflow inteiro a cada execução
+  retries: 5
+  start_period: 60s
+
+services:
+  postgres:
+    image: postgres:16.6
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-wb}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD no .env (make env)}
+      POSTGRES_DB: ${POSTGRES_DB:-worldbank}
+      # Lidas só por postgres/init/00_users.sh na primeira inicialização
+      POWERBI_PASSWORD: ${POWERBI_PASSWORD:?defina POWERBI_PASSWORD no .env}
+      API_RO_PASSWORD: ${API_RO_PASSWORD:?defina API_RO_PASSWORD no .env}
+      TZ: UTC
+      PGTZ: UTC
+    ports:
+      # Todas as portas só em 127.0.0.1: a stack é local e não deve ficar exposta na rede.
+      # Porta no host configurável (ex.: 5433 se já houver um Postgres local); dentro do Docker é sempre 5432
+      - "127.0.0.1:${POSTGRES_HOST_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # Scripts de init rodam só com volume vazio; mudanças posteriores vão em postgres/migrations/
+      - ./postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      # Via TCP: durante os scripts de init o servidor temporário só escuta no socket,
+      # então o serviço não fica "healthy" antes de ops/rt/dw existirem
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+    mem_limit: 512m
+
+  # ---------------------------------------------------------------- Kafka (KRaft, um nó) e stream de projetos
+  kafka:
+    image: apache/kafka:3.9.1
+    restart: unless-stopped
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk  # UUID em base64 (fixo: o volume guarda o cluster)
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      # Interno (containers) em kafka:9092; host em localhost:9094
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093,EXTERNAL://:9094
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,EXTERNAL://localhost:9094
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"  # tópicos só pelo kafka-init (partições e retenção do contrato)
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+      KAFKA_HEAP_OPTS: ${KAFKA_HEAP_OPTS:--Xmx512m -Xms512m}
+    ports:
+      - "127.0.0.1:9094:9094"
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 9092"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 15s
+    mem_limit: 1g
+
+  kafka-init:
+    image: apache/kafka:3.9.1
+    restart: "no"
+    environment:
+      KAFKA_HEAP_OPTS: -Xmx128m
+    # 6 partições, retenção de 30 dias (docs/contratos/evento-kafka.schema.json, x-kafka)
+    command:
+      - /opt/kafka/bin/kafka-topics.sh
+      - --bootstrap-server=kafka:9092
+      - --create
+      - --if-not-exists
+      - --topic=worldbank.projects.events
+      - --partitions=6
+      - --replication-factor=1
+      - --config=retention.ms=2592000000
+    depends_on:
+      kafka:
+        condition: service_healthy
+    mem_limit: 256m
+
+  kafka-ui:
+    image: provectuslabs/kafka-ui:v0.7.2
+    restart: unless-stopped
+    environment:
+      KAFKA_CLUSTERS_0_NAME: worldbank-local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
+      JAVA_OPTS: -Xmx256m
+    ports:
+      - "127.0.0.1:8085:8080"  # Kafka UI não tem autenticação: só no próprio host
+    depends_on:
+      kafka:
+        condition: service_healthy
+    mem_limit: 512m
+
+  projects-producer:
+    build:
+      context: .
+      dockerfile: ingestion/Dockerfile
+    image: worldbank-platform/ingestion:dev
+    # Replay termina com código 0 (fica parado); só reinicia se falhar. `make replay`/`make live` recriam.
+    restart: on-failure
+    command: ["python", "projects_producer.py"]
+    environment:
+      PRODUCER_MODE: ${PRODUCER_MODE:-replay}
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      RAW_DATA_DIR: /data/raw
+      REPLAY_START: ${REPLAY_START:-}
+      REPLAY_DAYS_PER_SECOND: ${REPLAY_DAYS_PER_SECOND:-30}
+      POLL_MINUTES: ${POLL_MINUTES:-15}
+      LIVE_LOOKBACK_DAYS: ${LIVE_LOOKBACK_DAYS:-730}
+      # Modo live: estado em ops.producer_state
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${POSTGRES_DB:-worldbank}
+      POSTGRES_USER: ${POSTGRES_USER:-wb}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      TZ: UTC
+    volumes:
+      - ./data/raw:/data/raw:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
+    mem_limit: 256m
+
+  # Consumer group lakehouse-sink: micro-lotes NDJSON → Volume (ou data/landing sem Databricks) → ops.landing_files
+  lake-sink:
+    image: worldbank-platform/ingestion:dev
+    build:
+      context: .
+      dockerfile: ingestion/Dockerfile
+    restart: unless-stopped
+    command: ["python", "lake_sink.py"]
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      FLUSH_MAX_EVENTS: ${FLUSH_MAX_EVENTS:-500}
+      FLUSH_MAX_SECONDS: ${FLUSH_MAX_SECONDS:-60}
+      LANDING_DIR: /data/landing
+      DATABRICKS_HOST: ${DATABRICKS_HOST:-}
+      DATABRICKS_TOKEN: ${DATABRICKS_TOKEN:-}
+      DATABRICKS_CATALOG: ${DATABRICKS_CATALOG:-worldbank}
+      DATABRICKS_SCHEMA: ${DATABRICKS_SCHEMA:-lakehouse}
+      DATABRICKS_VOLUME: ${DATABRICKS_VOLUME:-landing}
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${POSTGRES_DB:-worldbank}
+      POSTGRES_USER: ${POSTGRES_USER:-wb}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      TZ: UTC
+    volumes:
+      - ./data/landing:/data/landing
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
+    mem_limit: 256m
+
+  # Consumer group serving-realtime: rt.* em segundos. UMA instância só (o SSE ordena por rt.project_events.seq)
+  realtime-sink:
+    image: worldbank-platform/ingestion:dev
+    build:
+      context: .
+      dockerfile: ingestion/Dockerfile
+    restart: unless-stopped
+    command: ["python", "realtime_sink.py"]
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      ALERT_MIN_COMMITMENT_USD: ${ALERT_MIN_COMMITMENT_USD:-500000000}
+      RT_BATCH: ${RT_BATCH:-500}
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${POSTGRES_DB:-worldbank}
+      POSTGRES_USER: ${POSTGRES_USER:-wb}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      TZ: UTC
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
+    mem_limit: 256m
+
+  # ---------------------------------------------------------------- Serving
+  api:
+    build: ./api
+    image: worldbank-platform/api:dev
+    restart: unless-stopped
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${POSTGRES_DB:-worldbank}
+      API_RO_USER: api_ro
+      API_RO_PASSWORD: ${API_RO_PASSWORD:?defina API_RO_PASSWORD no .env}
+      API_KEY: ${API_KEY:-}
+      CORS_ORIGINS: ${CORS_ORIGINS:-*}
+      TZ: UTC
+    ports:
+      - "127.0.0.1:8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    mem_limit: 256m
+
+  # ---------------------------------------------------------------- Airflow 3.1 (LocalExecutor)
+  airflow-init:
+    <<: *airflow-common
+    restart: "no"
+    environment:
+      <<: *airflow-env
+      # O entrypoint da imagem migra o banco e cria o admin antes de rodar o comando
+      _AIRFLOW_DB_MIGRATE: "true"
+      _AIRFLOW_WWW_USER_CREATE: "true"
+      _AIRFLOW_WWW_USER_USERNAME: ${AIRFLOW_ADMIN_USER:-admin}
+      _AIRFLOW_WWW_USER_PASSWORD: ${AIRFLOW_ADMIN_PASSWORD:?defina AIRFLOW_ADMIN_PASSWORD no .env}
+    # Pools de 1 slot: os jobs de indicadores e de projetos nunca escrevem o gold ao mesmo tempo, e dois
+    # sync_dw nunca espelham o mesmo fato do dw em paralelo
+    command: ["bash", "-c", "airflow pools set databricks 1 'Jobs Databricks: um por vez no gold' && airflow pools set dw_sync 1 'sync gold -> dw: um por vez'"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    mem_limit: 1g
+
+  airflow-apiserver:
+    <<: *airflow-common
+    command: api-server
+    ports:
+      - "127.0.0.1:8080:8080"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/api/v2/version"]
+      <<: *airflow-healthcheck
+    depends_on: *airflow-depends
+    mem_limit: 768m
+
+  airflow-scheduler:
+    <<: *airflow-common
+    command: scheduler
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8974/health"]
+      <<: *airflow-healthcheck
+    depends_on: *airflow-depends
+    # LocalExecutor: as tarefas rodam dentro do scheduler
+    mem_limit: 1g
+
+  airflow-dag-processor:
+    <<: *airflow-common
+    command: dag-processor
+    healthcheck:
+      test: ["CMD-SHELL", "airflow jobs check --job-type DagProcessorJob --hostname \"$${HOSTNAME}\""]
+      <<: *airflow-healthcheck
+    depends_on: *airflow-depends
+    mem_limit: 768m
+
+  airflow-triggerer:
+    <<: *airflow-common
+    command: triggerer
+    healthcheck:
+      test: ["CMD-SHELL", "airflow jobs check --job-type TriggererJob --hostname \"$${HOSTNAME}\""]
+      <<: *airflow-healthcheck
+    depends_on: *airflow-depends
+    mem_limit: 512m
+
+volumes:
+  pgdata:
+  kafka-data:
+  airflow-logs:

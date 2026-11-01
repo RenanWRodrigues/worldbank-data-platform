@@ -1,0 +1,38 @@
+table fact_indicator
+	lineageTag: 3ab1b698-f78c-4bba-a42e-7dc75111bbb4
+
+	column country_code
+		dataType: string
+		lineageTag: 9d81bb86-6ddf-4ad0-913f-38c2809b4e85
+		sourceColumn: country_code
+
+	column indicator_code
+		dataType: string
+		lineageTag: 7978dc78-61a4-4839-87e0-9e977fb79de7
+		sourceColumn: indicator_code
+
+	column year
+		dataType: int64
+		formatString: 0
+		lineageTag: a7b9ee26-529c-490a-ae89-c3349de6ba40
+		summarizeBy: none
+		sourceColumn: year
+
+	column value
+		dataType: double
+		lineageTag: ac88b9e8-d07b-4d81-b891-ea970f528ca9
+		sourceColumn: value
+
+	column source
+		dataType: string
+		lineageTag: a8c39022-2b14-4226-8db0-2ebc8b4563e5
+		sourceColumn: source
+
+	partition fact_indicator = m
+		mode: import
+		source =
+				let
+				    Fonte = PostgreSQL.Database("127.0.0.1:5433", "worldbank"),
+				    Tabela = Fonte{[Schema = "dw", Item = "fact_indicator"]}[Data]
+				in
+				    Tabela

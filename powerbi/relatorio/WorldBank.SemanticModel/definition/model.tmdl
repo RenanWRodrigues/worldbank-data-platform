@@ -1,0 +1,33 @@
+model Model
+	culture: pt-BR
+	defaultPowerBIDataSourceVersion: powerBI_V3
+	dataSourceDefaultMaxConnections: 3
+	sourceQueryCulture: pt-BR
+	valueFilterBehavior: independent
+	dataAccessOptions
+		legacyRedirects
+		returnErrorValuesAsNull
+
+annotation __PBI_TimeIntelligenceEnabled = 1
+
+annotation PBI_ProTooling = ["MCP-PBIModeling","DevMode"]
+
+annotation PBI_QueryOrder = ["dim_country","dim_year","dim_indicator","fact_indicator","fact_project","agg_country_year","load_audit","rt_project_events","rt_projects_latest","rt_alerts"]
+
+ref table dim_country
+ref table dim_year
+ref table dim_indicator
+ref table fact_indicator
+ref table fact_project
+ref table agg_country_year
+ref table load_audit
+ref table rt_project_events
+ref table rt_projects_latest
+ref table rt_alerts
+ref table _Medidas
+ref table DateTableTemplate_219b8857-a2f8-4ce4-8c39-a7a8c7680460
+ref table LocalDateTable_ea1ffc79-1360-4fe9-a4c0-c00ccfac140a
+ref table LocalDateTable_fbf04154-9e69-4dd0-a6d7-c73f3a0059e5
+ref table LocalDateTable_784b871d-ae4d-4f0d-8d49-cb3a3378b62f
+
+ref cultureInfo pt-BR

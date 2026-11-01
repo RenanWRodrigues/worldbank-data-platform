@@ -1,0 +1,16 @@
+# Ferramentas de desenvolvimento e testes locais (fora dos containers)
+pytest==8.3.4
+pytest-cov==6.0.0
+ruff==0.17.3
+pre-commit==4.0.1
+jsonschema==4.23.0
+pandas==2.2.3
+pyspark==3.5.3        # requer Java 17 (JAVA_HOME)
+pycountry==24.6.1
+httpx==0.28.1         # TestClient do FastAPI
+fastapi==0.115.6
+requests==2.32.3
+defusedxml==0.7.1         # XML do Kaggle (ingestion/kaggle_loader.py)
+psycopg2-binary==2.9.10   # testes de integração
+kaggle==1.6.17
+# As dependências de cada componente ficam em <componente>/requirements.txt

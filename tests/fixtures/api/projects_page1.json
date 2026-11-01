@@ -1,0 +1,54 @@
+{
+ "rows": 2,
+ "os": 0,
+ "page": 1,
+ "total": 2,
+ "projects": {
+  "P123456": {
+   "id": "P123456",
+   "project_name": "Kenya Off-Grid Solar Access",
+   "status": "Active",
+   "countryshortname": "Kenya",
+   "countrycode": [
+    "KE"
+   ],
+   "regionname": "Eastern and Southern Africa",
+   "boardapprovaldate": "2024-03-21T00:00:00Z",
+   "closingdate": "12/31/2029 12:00:00 AM",
+   "totalcommamt": "750,000,000",
+   "lendinginstr": "Investment Project Financing",
+   "sector1": {
+    "Name": "Renewable Energy Solar",
+    "Percent": 80
+   },
+   "sector": [
+    {
+     "Name": "Public Administration - Energy and Extractives"
+    },
+    {
+     "Name": "Renewable Energy Solar"
+    }
+   ],
+   "mjsector": [
+    {
+     "Name": "Public Administration"
+    },
+    {
+     "Name": "Energy and Extractives"
+    }
+   ]
+  },
+  "P654321": {
+   "id": "P654321",
+   "project_name": "Regional Trade Facilitation",
+   "status": "Pipeline",
+   "countryshortname": "Western and Central Africa",
+   "countrycode": [
+    "3A"
+   ],
+   "regionname": "Western and Central Africa",
+   "boardapprovaldate": "2025-06-10T00:00:00Z",
+   "curr_total_commitment": "120.00"
+  }
+ }
+}

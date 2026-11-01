@@ -1,0 +1,6 @@
+# Dependências de runtime de ingestion/ (producer e consumidores); o resto é biblioteca padrão
+requests==2.32.3
+defusedxml==0.7.1
+jsonschema==4.23.0
+confluent-kafka==2.13.2
+psycopg2-binary==2.9.10

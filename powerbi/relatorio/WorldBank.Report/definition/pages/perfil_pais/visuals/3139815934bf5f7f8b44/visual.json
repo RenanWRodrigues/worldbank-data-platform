@@ -1,0 +1,70 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.14.0/schema.json",
+  "name": "3139815934bf5f7f8b44",
+  "position": {
+    "x": 644,
+    "y": 208,
+    "z": 45000,
+    "height": 216,
+    "width": 620,
+    "tabOrder": 45000
+  },
+  "visual": {
+    "visualType": "lineChart",
+    "query": {
+      "queryState": {
+        "Category": {
+          "projections": [
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "dim_year"
+                    }
+                  },
+                  "Property": "year"
+                }
+              },
+              "queryRef": "dim_year.year",
+              "nativeQueryRef": "year",
+              "active": true
+            }
+          ]
+        },
+        "Y": {
+          "projections": [
+            {
+              "field": {
+                "Measure": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "_Medidas"
+                    }
+                  },
+                  "Property": "Acesso à eletricidade (%)"
+                }
+              },
+              "queryRef": "_Medidas.Acesso à eletricidade (%)",
+              "nativeQueryRef": "Acesso à eletricidade (%)"
+            },
+            {
+              "field": {
+                "Measure": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "_Medidas"
+                    }
+                  },
+                  "Property": "População rural (%)"
+                }
+              },
+              "queryRef": "_Medidas.População rural (%)",
+              "nativeQueryRef": "População rural (%)"
+            }
+          ]
+        }
+      }
+    }
+  }
+}

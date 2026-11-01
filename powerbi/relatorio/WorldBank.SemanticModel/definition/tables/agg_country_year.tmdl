@@ -1,0 +1,65 @@
+table agg_country_year
+	lineageTag: b5174ab4-2ae2-4434-9504-c91ef5ec08f4
+
+	column country_code
+		dataType: string
+		lineageTag: b5007dce-fc71-4d26-9381-8bdb02c5fedf
+		sourceColumn: country_code
+
+	column year
+		dataType: int64
+		formatString: 0
+		lineageTag: b83bcaa7-cae1-4208-87c0-94c7aa368aab
+		summarizeBy: none
+		sourceColumn: year
+
+	column population
+		dataType: double
+		formatString: #,0
+		lineageTag: a66e8298-a16e-4495-bae5-834174e78432
+		sourceColumn: population
+
+	column gdp_usd
+		dataType: double
+		formatString: #,0
+		lineageTag: f448e983-974b-4967-8cef-0c26e6133207
+		sourceColumn: gdp_usd
+
+	column gdp_per_capita_usd
+		dataType: double
+		formatString: #,0
+		lineageTag: 8fbc848a-e79a-446c-8040-099c99b7d8ab
+		sourceColumn: gdp_per_capita_usd
+
+	column rural_population_pct
+		dataType: double
+		formatString: 0.0
+		lineageTag: c27bb128-6c47-43ba-94ec-2b744c6a7f0f
+		sourceColumn: rural_population_pct
+
+	column electricity_access_pct
+		dataType: double
+		formatString: 0.0
+		lineageTag: 6e5b62fa-4dc8-474e-be6a-b2eb0f0bffcf
+		sourceColumn: electricity_access_pct
+
+	column projects_approved
+		dataType: int64
+		formatString: #,0
+		lineageTag: 71452a10-8d27-45d1-8e14-5837b8a81a54
+		sourceColumn: projects_approved
+
+	column projects_total_amount_usd
+		dataType: double
+		formatString: #,0
+		lineageTag: ae06b20e-6093-4c03-a82d-68e6d4006f73
+		sourceColumn: projects_total_amount_usd
+
+	partition agg_country_year = m
+		mode: import
+		source =
+				let
+				    Fonte = PostgreSQL.Database("127.0.0.1:5433", "worldbank"),
+				    Tabela = Fonte{[Schema = "dw", Item = "agg_country_year"]}[Data]
+				in
+				    Tabela

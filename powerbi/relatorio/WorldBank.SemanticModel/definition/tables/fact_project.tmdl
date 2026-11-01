@@ -1,0 +1,168 @@
+table fact_project
+	lineageTag: 5295b331-b859-4694-89d0-e395941f53a8
+
+	column project_id
+		dataType: string
+		isKey
+		lineageTag: abf6c887-e8f3-44e3-8ee6-926fe4d5e4ec
+		summarizeBy: none
+		sourceColumn: project_id
+
+		annotation SummarizationSetBy = Automatic
+
+	column country_code
+		dataType: string
+		lineageTag: 6d057878-4058-4f69-be0f-3157adf59d55
+		summarizeBy: none
+		sourceColumn: country_code
+
+		annotation SummarizationSetBy = Automatic
+
+	column country_name_raw
+		dataType: string
+		lineageTag: 49bc269e-83ad-4f62-a990-8acef02a3fc6
+		summarizeBy: none
+		sourceColumn: country_name_raw
+
+		annotation SummarizationSetBy = Automatic
+
+	column region_name
+		dataType: string
+		lineageTag: befd783d-d6db-4c52-bcfb-8ae3e3c4baeb
+		summarizeBy: none
+		sourceColumn: region_name
+
+		annotation SummarizationSetBy = Automatic
+
+	column project_name
+		dataType: string
+		lineageTag: 03abb4f4-b065-431f-8060-ca5345890149
+		summarizeBy: none
+		sourceColumn: project_name
+
+		annotation SummarizationSetBy = Automatic
+
+	column status
+		dataType: string
+		lineageTag: 06d3c78e-d3a1-45dc-a662-94a64e9a6fa9
+		summarizeBy: none
+		sourceColumn: status
+
+		annotation SummarizationSetBy = Automatic
+
+	column lending_instrument
+		dataType: string
+		lineageTag: 9178cd10-7c16-4656-8ff1-bad9bd27bd84
+		summarizeBy: none
+		sourceColumn: lending_instrument
+
+		annotation SummarizationSetBy = Automatic
+
+	column major_sector
+		dataType: string
+		lineageTag: 2156bb6b-9187-4aae-96a2-f5c9c4657a74
+		summarizeBy: none
+		sourceColumn: major_sector
+
+		annotation SummarizationSetBy = Automatic
+
+	column board_approval_date
+		dataType: dateTime
+		formatString: dd/mm/yyyy
+		lineageTag: 7afc2889-b44b-4312-9475-cf74f38fbb30
+		summarizeBy: none
+		sourceColumn: board_approval_date
+
+		variation Variação
+			isDefault
+			relationship: 71747a48-4fdf-46e9-9567-206dbded5167
+			defaultHierarchy: LocalDateTable_fbf04154-9e69-4dd0-a6d7-c73f3a0059e5.'Hierarquia de datas'
+
+		annotation UnderlyingDateTimeDataType = Date
+
+		annotation SummarizationSetBy = Automatic
+
+	column approval_year
+		dataType: int64
+		formatString: 0
+		lineageTag: 06f94352-1b40-48b2-b726-4c7096ed047c
+		summarizeBy: none
+		sourceColumn: approval_year
+
+	column closing_date
+		dataType: dateTime
+		formatString: dd/mm/yyyy
+		lineageTag: 69cc8665-30da-46cd-81bf-0f1d5d89cddf
+		summarizeBy: none
+		sourceColumn: closing_date
+
+		variation Variação
+			isDefault
+			relationship: 7fb96657-df4c-48c5-8bf6-5472746c8d4e
+			defaultHierarchy: LocalDateTable_784b871d-ae4d-4f0d-8d49-cb3a3378b62f.'Hierarquia de datas'
+
+		annotation UnderlyingDateTimeDataType = Date
+
+		annotation SummarizationSetBy = Automatic
+
+	column total_amount_usd
+		dataType: double
+		formatString: #,0
+		lineageTag: f0bc0d8b-79f9-4991-8226-17863f3ed8d7
+		summarizeBy: sum
+		sourceColumn: total_amount_usd
+
+		annotation SummarizationSetBy = Automatic
+
+	column ibrd_amount_usd
+		dataType: double
+		formatString: #,0
+		lineageTag: d9fe380f-90aa-4965-a711-c537e1e1b291
+		summarizeBy: sum
+		sourceColumn: ibrd_amount_usd
+
+		annotation SummarizationSetBy = Automatic
+
+	column ida_amount_usd
+		dataType: double
+		formatString: #,0
+		lineageTag: 40c80a4d-ef2a-4da8-9cc5-d506e0de11e6
+		summarizeBy: sum
+		sourceColumn: ida_amount_usd
+
+		annotation SummarizationSetBy = Automatic
+
+	column grant_amount_usd
+		dataType: double
+		formatString: #,0
+		lineageTag: 71ea5ee0-50cd-4769-a5d6-3854063639db
+		summarizeBy: sum
+		sourceColumn: grant_amount_usd
+
+		annotation SummarizationSetBy = Automatic
+
+	column last_event_type
+		dataType: string
+		lineageTag: d0b8048c-2715-48e6-95a8-44f17840a613
+		summarizeBy: none
+		sourceColumn: last_event_type
+
+		annotation SummarizationSetBy = Automatic
+
+	column last_event_time
+		dataType: dateTime
+		formatString: dd/mm/yyyy hh:nn:ss
+		lineageTag: 06e30871-c13f-442f-8bbe-edb538a1dca6
+		summarizeBy: none
+		sourceColumn: last_event_time
+
+		annotation SummarizationSetBy = Automatic
+
+	partition fact_project = m
+		mode: import
+		source =
+				let
+				    Fonte = PostgreSQL.Database("127.0.0.1:5433", "worldbank"),
+				    Tabela = Fonte{[Schema = "dw", Item = "fact_project"]}[Data]
+				in
+				    Tabela
